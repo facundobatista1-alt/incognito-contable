@@ -317,8 +317,13 @@
             .form-grid { grid-template-columns: 1fr; }
         }
     </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body>
+<div id="sb-loading" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center;flex-direction:column;color:#fff;font-family:sans-serif;">
+    <div style="font-size:2rem;margin-bottom:.5rem;">☁️</div>
+    <div style="font-size:1rem;letter-spacing:.05em;">Sincronizando con la nube…</div>
+</div>
 
     <!-- LOCK SCREEN -->
     <div id="lock-screen">
@@ -344,6 +349,7 @@
                 if (hex === HASH) {
                     sessionStorage.setItem('hc_auth', HASH);
                     document.getElementById('lock-screen').style.display = 'none';
+                    initSupabase();
                 } else {
                     const inp = document.getElementById('lock-input');
                     inp.classList.add('error');
@@ -695,6 +701,9 @@ const COLORS_INC = ['#6C3FC5','#22c55e','#f59e0b','#06b6d4','#8b5cf6'];
     const SEED_ADJ = [{"id":"adj_001","fecha":"2024-05-07","categoria":"Inversión","cuenta":"Correo","descripcion":"Saldo inicial","nroInterno":"","ingreso":3471.0,"egreso":0},{"id":"adj_002","fecha":"2024-05-07","categoria":"Inversión","cuenta":"Efectivo FB","descripcion":"Saldo inicial","nroInterno":"","ingreso":899600.0,"egreso":0},{"id":"adj_003","fecha":"2024-05-07","categoria":"Inversión","cuenta":"Efectivo MV","descripcion":"Saldo inicial","nroInterno":"","ingreso":938000.0,"egreso":0},{"id":"adj_004","fecha":"2024-05-07","categoria":"Inversión","cuenta":"Galicia FB","descripcion":"Saldo inicial","nroInterno":"","ingreso":351681.94,"egreso":0},{"id":"adj_005","fecha":"2024-05-07","categoria":"Inversión","cuenta":"Sin cuenta","descripcion":"Saldo inicial","nroInterno":"","ingreso":0,"egreso":1121483.03},{"id":"adj_006","fecha":"2024-05-07","categoria":"Inversión","cuenta":"Uala FB","descripcion":"Saldo inicial","nroInterno":"","ingreso":0,"egreso":453613.0},{"id":"adj_007","fecha":"2024-05-07","categoria":"Inversión","cuenta":"Uala MV","descripcion":"Saldo inicial","nroInterno":"","ingreso":0,"egreso":617656.91}];
     const storedTx = JSON.parse(localStorage.getItem('hc_tx') || '[]');
     localStorage.setItem('hc_tx', JSON.stringify(SEED_ADJ.concat(storedTx)));
+    // expose for Supabase seed on first cloud run
+    window._SEED_TX = SEED_ADJ.concat(storedTx);
+    window._SEED_TR = SEED_TR;
 })();
 
 // ── ONE-TIME BALANCE ADJUSTMENTS for already-loaded data ──
@@ -710,6 +719,81 @@ const COLORS_INC = ['#6C3FC5','#22c55e','#f59e0b','#06b6d4','#8b5cf6'];
     localStorage.setItem('hc_adjusted', '1');
 })();
 
+// ── Supabase config ──────────────────────────────────────────────────────────
+const SB_URL  = 'https://hspvuakueakgeffiyjzm.supabase.co';
+const SB_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhzcHZ1YWt1ZWFrZ2VmZml5anptIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0NjI2ODgsImV4cCI6MjA5NDAzODY4OH0.74_AUatbpgaufvciYdMG-gyLlaJ0R4u1orH6rKY6xuo';
+let sb        = null;
+let _sbTimer  = null;
+
+function sbRow(t) {
+    return {
+        id: t.id, fecha: t.fecha, descripcion: t.descripcion || '',
+        cuenta: t.cuenta, ingreso: t.ingreso || 0, egreso: t.egreso || 0,
+        categoria: t.categoria || '', nro_interno: t.nroInterno || t.nro_interno || '',
+        pendiente: !!t.pendiente
+    };
+}
+function trRow(t) {
+    return { id: t.id, fecha: t.fecha, origen: t.origen, destino: t.destino, monto: t.monto, descripcion: t.descripcion || '' };
+}
+function fromRow(r) {
+    return { id: r.id, fecha: r.fecha, descripcion: r.descripcion, cuenta: r.cuenta,
+             ingreso: parseFloat(r.ingreso)||0, egreso: parseFloat(r.egreso)||0,
+             categoria: r.categoria, nroInterno: r.nro_interno, pendiente: r.pendiente };
+}
+function fromTrRow(r) {
+    return { id: r.id, fecha: r.fecha, origen: r.origen, destino: r.destino,
+             monto: parseFloat(r.monto)||0, descripcion: r.descripcion };
+}
+
+async function initSupabase() {
+    const loader = document.getElementById('sb-loading');
+    loader.style.display = 'flex';
+    try {
+        sb = supabase.createClient(SB_URL, SB_KEY);
+        const [{ data: txData, error: txErr }, { data: trData, error: trErr }] = await Promise.all([
+            sb.from('transactions').select('*').order('fecha', { ascending: true }),
+            sb.from('transfers').select('*').order('fecha', { ascending: true })
+        ]);
+        if (txErr) throw txErr;
+        if (trErr) throw trErr;
+
+        if (txData.length === 0 && trData.length === 0) {
+            // First cloud run — seed from localStorage data (already seeded by seedIfEmpty IIFE)
+            const seedTx = (window._SEED_TX || []).length ? window._SEED_TX : JSON.parse(localStorage.getItem('hc_tx') || '[]');
+            const seedTr = (window._SEED_TR || []).length ? window._SEED_TR : JSON.parse(localStorage.getItem('hc_tr') || '[]');
+            if (seedTx.length) await sb.from('transactions').upsert(seedTx.map(sbRow));
+            if (seedTr.length) await sb.from('transfers').upsert(seedTr.map(trRow));
+            transactions = seedTx;
+            transfers    = seedTr;
+        } else {
+            // Subsequent runs — load from Supabase (source of truth)
+            transactions = txData.map(fromRow);
+            transfers    = trData.map(fromTrRow);
+            localStorage.setItem('hc_tx', JSON.stringify(transactions));
+            localStorage.setItem('hc_tr', JSON.stringify(transfers));
+        }
+    } catch(e) {
+        console.warn('Supabase load failed, using localStorage:', e);
+        transactions = JSON.parse(localStorage.getItem('hc_tx') || '[]');
+        transfers    = JSON.parse(localStorage.getItem('hc_tr') || '[]');
+    }
+    loader.style.display = 'none';
+    renderAll();
+}
+
+function sbSync() {
+    if (!sb) return;
+    clearTimeout(_sbTimer);
+    _sbTimer = setTimeout(async () => {
+        try {
+            await sb.from('transactions').upsert(transactions.map(sbRow));
+            await sb.from('transfers').upsert(transfers.map(trRow));
+        } catch(e) { console.warn('Supabase sync failed:', e); }
+    }, 1200);
+}
+
+// ── local state ──────────────────────────────────────────────────────────────
 let transactions = JSON.parse(localStorage.getItem('hc_tx') || '[]');
 let transfers    = JSON.parse(localStorage.getItem('hc_tr') || '[]');
 let currentTipo  = 'ingreso';
@@ -718,6 +802,7 @@ let chartG = null, chartI = null;
 function persist() {
     localStorage.setItem('hc_tx', JSON.stringify(transactions));
     localStorage.setItem('hc_tr', JSON.stringify(transfers));
+    sbSync();
 }
 
 // ══════════════════════════════════════════════════════
@@ -1000,6 +1085,7 @@ function deleteTx(id) {
     if (!confirm('¿Eliminar esta transacción? Esta acción no se puede deshacer.')) return;
     transactions = transactions.filter(t => t.id !== id);
     persist();
+    if (sb) sb.from('transactions').delete().eq('id', id).then(() => {});
     const active = document.querySelector('.page.active').id.replace('page-','');
     const renders = { dashboard: renderDashboard, historial: renderHistorial, gastos: renderGastos, ingresos: renderIngresos };
     if (renders[active]) renders[active]();
@@ -1008,6 +1094,7 @@ function deleteTr(id) {
     if (!confirm('¿Eliminar esta transferencia? Esta acción no se puede deshacer.')) return;
     transfers = transfers.filter(t => t.id !== id);
     persist();
+    if (sb) sb.from('transfers').delete().eq('id', id).then(() => {});
     renderTransfers();
 }
 
