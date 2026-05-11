@@ -336,6 +336,10 @@
                 onkeydown="if(event.key==='Enter')unlock()">
             <button class="lock-btn" onclick="unlock()">Ingresar</button>
             <div class="lock-error" id="lock-error"></div>
+            <div id="migrate-section" style="margin-top:1.2rem;border-top:1px solid rgba(255,255,255,.15);padding-top:1rem;">
+                <button onclick="migrarDatos()" style="background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.3);padding:.5rem 1.2rem;border-radius:8px;cursor:pointer;font-size:.82rem;width:100%;">☁️ Migrar mis datos locales a la nube</button>
+                <div id="migrate-msg" style="font-size:.78rem;margin-top:.5rem;color:rgba(255,255,255,.7);text-align:center;"></div>
+            </div>
         </div>
     </div>
     <script>
@@ -366,6 +370,70 @@
             });
         }
     })();
+
+        window.migrarDatos = async function() {
+            const msg = document.getElementById('migrate-msg');
+            const tx = localStorage.getItem('hc_tx');
+            const tr = localStorage.getItem('hc_tr');
+            if (!tx || tx === '[]') {
+                msg.textContent = '⚠️ No hay datos locales para migrar.';
+                return;
+            }
+            const txArr = JSON.parse(tx);
+            const trArr = JSON.parse(tr || '[]');
+            msg.textContent = 'Conectando a Supabase…';
+            try {
+                const SB_URL = 'https://hspvuakueakgeffiyjzm.supabase.co';
+                const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhzcHZ1YWt1ZWFrZ2VmZml5anptIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0NjI2ODgsImV4cCI6MjA5NDAzODY4OH0.74_AUatbpgaufvciYdMG-gyLlaJ0R4u1orH6rKY6xuo';
+                const client = supabase.createClient(SB_URL, SB_KEY);
+
+                // Fetch what's already in Supabase to preserve new records
+                msg.textContent = 'Leyendo datos en la nube…';
+                const { data: sbTx } = await client.from('transactions').select('id');
+                const { data: sbTr } = await client.from('transfers').select('id');
+                const sbTxIds = new Set((sbTx || []).map(r => r.id));
+                const sbTrIds = new Set((sbTr || []).map(r => r.id));
+                const localTxIds = new Set(txArr.map(t => t.id));
+                const localTrIds = new Set(trArr.map(t => t.id));
+
+                // Records in Supabase but NOT in local = newly added via web (keep them!)
+                const newOnlySbTx = (sbTx || []).filter(r => !localTxIds.has(r.id));
+                const newOnlySbTr = (sbTr || []).filter(r => !localTrIds.has(r.id));
+                msg.textContent = 'Detectados ' + newOnlySbTx.length + ' movimientos nuevos en la nube (se conservan)…';
+
+                // Upsert all local data (restores correct historical values)
+                msg.textContent = 'Subiendo ' + txArr.length + ' registros históricos…';
+                const mapped = txArr.map(t => ({
+                    id: t.id, fecha: t.fecha, descripcion: t.descripcion || '',
+                    cuenta: t.cuenta, ingreso: t.ingreso || 0, egreso: t.egreso || 0,
+                    categoria: t.categoria || '', nro_interno: t.nroInterno || t.nro_interno || '',
+                    pendiente: !!t.pendiente
+                }));
+                // upsert in chunks of 500 to avoid payload limits
+                for (let i = 0; i < mapped.length; i += 500) {
+                    const chunk = mapped.slice(i, i + 500);
+                    const { error: e1 } = await client.from('transactions').upsert(chunk);
+                    if (e1) throw e1;
+                }
+                if (trArr.length) {
+                    const trMapped = trArr.map(t => ({
+                        id: t.id, fecha: t.fecha, origen: t.origen, destino: t.destino,
+                        monto: t.monto, descripcion: t.descripcion || ''
+                    }));
+                    for (let i = 0; i < trMapped.length; i += 500) {
+                        const chunk = trMapped.slice(i, i + 500);
+                        const { error: e2 } = await client.from('transfers').upsert(chunk);
+                        if (e2) throw e2;
+                    }
+                }
+                const total = txArr.length + newOnlySbTx.length;
+                msg.style.color = '#7fff7f';
+                msg.textContent = '✅ Listo: ' + txArr.length + ' históricos + ' + newOnlySbTx.length + ' nuevos conservados. Recargá la página.';
+            } catch(e) {
+                msg.style.color = '#ffaaaa';
+                msg.textContent = '❌ Error: ' + (e.message || JSON.stringify(e));
+            }
+        };
     </script>
 
 
