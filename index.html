@@ -715,6 +715,14 @@
                 </label>
                 <button class="btn btn-outline btn-sm" onclick="clearHistorialFilters()">Limpiar</button>
             </div>
+            <div id="historial-summary" style="display:none;gap:1rem;flex-wrap:wrap;padding:.6rem 1rem;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:.75rem;align-items:center;font-size:.9rem;">
+                <span style="color:var(--text-muted);font-size:.82rem;" id="h-sum-count"></span>
+                <span style="margin-left:auto;display:flex;gap:1.5rem;flex-wrap:wrap;">
+                    <span>Ingresos: <strong id="h-sum-ing" style="color:#15803d"></strong></span>
+                    <span>Egresos: <strong id="h-sum-eg" style="color:var(--danger)"></strong></span>
+                    <span>Neto: <strong id="h-sum-neto"></strong></span>
+                </span>
+            </div>
             <div class="table-card">
                 <table>
                     <thead><tr>
@@ -1568,6 +1576,23 @@ function renderHistorial() {
             </td>
           </tr>`;
         }).join('');
+
+    // ── summary bar ──
+    const sumEl = document.getElementById('historial-summary');
+    if (filtered.length > 0) {
+        const totalIng = filtered.reduce((s, t) => s + (t.ingreso || 0), 0);
+        const totalEg  = filtered.reduce((s, t) => s + (t.egreso  || 0), 0);
+        const neto     = totalIng - totalEg;
+        document.getElementById('h-sum-count').textContent = filtered.length + ' registro' + (filtered.length !== 1 ? 's' : '');
+        document.getElementById('h-sum-ing').textContent   = fmt(totalIng);
+        document.getElementById('h-sum-eg').textContent    = fmt(totalEg);
+        const netoEl = document.getElementById('h-sum-neto');
+        netoEl.textContent = fmtSigned(neto);
+        netoEl.style.color = neto >= 0 ? '#15803d' : 'var(--danger)';
+        sumEl.style.display = 'flex';
+    } else {
+        sumEl.style.display = 'none';
+    }
 }
 
 function clearHistorialFilters() {
