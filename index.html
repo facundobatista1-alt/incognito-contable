@@ -1692,4 +1692,121 @@ function renderHistorial() {
         document.getElementById('h-sum-count').textContent = filtered.length + ' registro' + (filtered.length !== 1 ? 's' : '');
         document.getElementById('h-sum-ing').textContent   = fmt(totalIng);
         document.getElementById('h-sum-eg').textContent    = fmt(totalEg);
-        const netoEl = document.ge
+        const netoEl = document.getElement('h-sum-neto');
+        netoEl.textContent = fmtSigned(neto);
+        netoEl.style.color = neto >= 0 ? '#15803d' : 'var(--danger)';
+        sumEl.style.display = 'flex';
+    } else {
+        sumEl.style.display = 'none';
+    }
+}
+
+function clearHistorialFilters() {
+    ['h-search','h-nro','h-tipo','h-cuenta','h-cat','h-mes'].forEach(id => document.getElementById(id).value = '');
+    renderHistorial();
+}
+
+// ══════════════════════════════════════════════════════
+// RENDER TRANSFERENCIAS
+// ══════════════════════════════════════════════════════
+function renderTransfers() {
+    const tbody = document.getElementById('transf-list');
+    tbody.innerHTML = transfers.length === 0
+        ? `<tr class="empty-row"><td colspan="6">Sin transferencias registradas</td></tr>`
+        : [...transfers].reverse().map(t => `<tr>
+            <td>${fmtDate(t.fecha)}</td>
+            <td><span class="badge badge-red">${t.origen}</span></td>
+            <td style="text-align:center;color:var(--gray-300)">→</td>
+            <td><span class="badge badge-green">${t.destino}</span></td>
+            <td style="font-weight:600">${fmt(t.monto)}</td>
+            <td><button class="btn btn-ghost btn-sm" onclick="deleteTr('${t.id}')">Eliminar</button></td>
+          </tr>`).join('');
+}
+
+// ══════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════
+function init() {
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('f-fecha').value = today;
+    document.getElementById('t-fecha').value = today;
+
+    const accountOpts = ACCOUNTS.map(a => `<option>${a}</option>`).join('');
+    ['f-cuenta','t-origen','t-destino','fg-cuenta','fi-cuenta','h-cuenta'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = el.innerHTML + accountOpts;
+    });
+
+    const catOpts = ALL_CATS.map(c => `<option>${c}</option>`).join('');
+    document.getElementById('h-cat').innerHTML += catOpts;
+
+    updateCatSelect();
+    renderDashboard();
+}
+
+init();
+</script>
+
+    <!-- LOTE FLUX MODAL -->
+    <div class="modal-overlay" id="lote-flux-modal" onclick="if(event.target===this)cerrarLoteFlux()" style="z-index:300">
+        <div class="modal-box" style="max-width:580px">
+            <h3>⚡ Completar Flux por lote</h3>
+            <p style="font-size:.85rem;color:#6b7280;margin-bottom:14px;">
+                Pegá los datos copiados de tu sistema. Cada línea debe tener el N° de orden y el monto separados por tab o espacio:
+            </p>
+            <div style="background:#f3f4f6;border-radius:8px;padding:10px 14px;font-size:.78rem;color:#374151;margin-bottom:12px;font-family:monospace;line-height:1.7">
+                6343&nbsp;&nbsp;&nbsp;$ 70.099<br>
+                6344&nbsp;&nbsp;&nbsp;$ 90.480<br>
+                6379&nbsp;&nbsp;&nbsp;$ 109.100
+            </div>
+            <textarea id="lote-flux-input" rows="10" placeholder="Pegá acá..." style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px;font-family:monospace;font-size:.85rem;resize:vertical;" oninput="parsearLote()"></textarea>
+            <div id="lote-flux-preview" style="margin-top:12px;font-size:.83rem;"></div>
+            <div class="modal-actions">
+                <button class="btn btn-outline btn-sm" onclick="cerrarLoteFlux()">Cancelar</button>
+                <button class="btn btn-sm" id="lote-flux-confirm-btn" style="background:#f59e0b;color:white;border:none;font-weight:600;display:none" onclick="confirmarLote()">Confirmar y completar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- EDIT MODAL -->
+    <div class="modal-overlay" id="edit-modal" onclick="if(event.target===this)closeEditModal()">
+        <div class="modal-box">
+            <h3>Editar transacción</h3>
+            <div class="tipo-toggle" style="margin-bottom:16px">
+                <button id="e-btn-ingreso" class="tipo-btn" onclick="setEditTipo('ingreso')">Ingreso</button>
+                <button id="e-btn-egreso"  class="tipo-btn" onclick="setEditTipo('egreso')">Egreso</button>
+            </div>
+            <div class="modal-grid">
+                <div class="form-group">
+                    <label>Fecha</label>
+                    <input type="date" id="e-fecha">
+                </div>
+                <div class="form-group">
+                    <label>Cuenta</label>
+                    <select id="e-cuenta"></select>
+                </div>
+                <div class="form-group">
+                    <label>Categoría</label>
+                    <select id="e-categoria"></select>
+                </div>
+                <div class="form-group">
+                    <label>Monto ($)</label>
+                    <input type="text" inputmode="decimal" id="e-monto" min="0" step="0.01" placeholder="0 o 4000+4000" onblur="evalMonto(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();evalMonto(this)}">
+                </div>
+                <div class="form-group full">
+                    <label>Descripción</label>
+                    <input type="text" id="e-desc" placeholder="Descripción">
+                </div>
+                <div class="form-group full" id="e-grupo-nro">
+                    <label>N° Interno</label>
+                    <input type="text" id="e-nro-interno" placeholder="Número de venta">
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-outline" onclick="closeEditModal()">Cancelar</button>
+                <button class="btn btn-primary" onclick="saveEdit()">Guardar cambios</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
