@@ -713,6 +713,7 @@
                     <input type="checkbox" id="h-flux-pending" onchange="renderHistorial()" style="accent-color:var(--warning)">
                     Solo Flux pendientes
                 </label>
+                <button class="btn btn-sm" style="background:#f59e0b;color:white;border:none;font-weight:600;" onclick="abrirLoteFlux()">⚡ Completar por lote</button>
                 <button class="btn btn-outline btn-sm" onclick="clearHistorialFilters()">Limpiar</button>
             </div>
             <div id="historial-summary" style="display:none;gap:1rem;flex-wrap:wrap;padding:.6rem 1rem;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:.75rem;align-items:center;font-size:.9rem;">
@@ -1136,6 +1137,111 @@ function completarFlux(id) {
     persist();
     renderAll();
     showToast('✓ Flux completado: ' + fmt(monto));
+}
+
+// ── LOTE FLUX ────────────────────────────────────────────────────────────────
+let _loteItems = [];   // parsed & matched items ready to confirm
+
+function abrirLoteFlux() {
+    document.getElementById('lote-flux-input').value = '';
+    document.getElementById('lote-flux-preview').innerHTML = '';
+    document.getElementById('lote-flux-confirm-btn').style.display = 'none';
+    document.getElementById('lote-flux-modal').classList.add('open');
+}
+function cerrarLoteFlux() {
+    document.getElementById('lote-flux-modal').classList.remove('open');
+    _loteItems = [];
+}
+
+function parsearLote() {
+    const raw = document.getElementById('lote-flux-input').value;
+    const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+    _loteItems = [];
+    const noEncontrados = [];
+
+    for (const line of lines) {
+        // Extract nro: first token of digits
+        const nroMatch = line.match(/^(\d+)/);
+        if (!nroMatch) continue;
+        const nro = nroMatch[1];
+
+        // Extract monto: digits, dots, commas after optional $
+        const montoMatch = line.match(/\$?\s*([\d.,]+)\s*$/);
+        if (!montoMatch) continue;
+
+        // Argentine format: dots = thousands separator, comma = decimal
+        // e.g. "70.099" → 70099 | "1.166.351,75" → 1166351.75
+        let montoStr = montoMatch[1];
+        const hasComma = montoStr.includes(',');
+        if (hasComma) {
+            // comma is decimal separator, dots are thousands
+            montoStr = montoStr.replace(/\./g, '').replace(',', '.');
+        } else {
+            // no comma: dots are thousands separators only
+            montoStr = montoStr.replace(/\./g, '');
+        }
+        const monto = parseFloat(montoStr);
+        if (isNaN(monto) || monto <= 0) continue;
+
+        // Find matching pending Flux transaction by nroInterno
+        const tx = transactions.find(t =>
+            t.pendiente && t.cuenta === 'Flux' &&
+            String(t.nroInterno || '').trim() === nro
+        );
+
+        if (tx) {
+            _loteItems.push({ tx, nro, monto });
+        } else {
+            noEncontrados.push(nro);
+        }
+    }
+
+    // Render preview
+    const prev = document.getElementById('lote-flux-preview');
+    const btn  = document.getElementById('lote-flux-confirm-btn');
+
+    if (_loteItems.length === 0 && noEncontrados.length === 0) {
+        prev.innerHTML = '';
+        btn.style.display = 'none';
+        return;
+    }
+
+    let html = '';
+    if (_loteItems.length > 0) {
+        html += `<div style="margin-bottom:8px;font-weight:600;color:#374151">✅ ${_loteItems.length} encontrado${_loteItems.length!==1?'s':''} para completar:</div>`;
+        html += '<table style="width:100%;border-collapse:collapse;font-size:.82rem">';
+        html += '<tr style="color:#6b7280;border-bottom:1px solid #e5e7eb"><th style="text-align:left;padding:4px 8px">N° Orden</th><th style="text-align:left;padding:4px 8px">Descripción</th><th style="text-align:left;padding:4px 8px">Fecha</th><th style="text-align:right;padding:4px 8px">Monto</th></tr>';
+        for (const item of _loteItems) {
+            html += `<tr style="border-bottom:1px solid #f3f4f6">
+                <td style="padding:4px 8px"><strong>#${item.nro}</strong></td>
+                <td style="padding:4px 8px">${item.tx.descripcion||'-'}</td>
+                <td style="padding:4px 8px">${item.tx.fecha}</td>
+                <td style="padding:4px 8px;text-align:right;color:#15803d;font-weight:600">${fmt(item.monto)}</td>
+            </tr>`;
+        }
+        html += '</table>';
+    }
+    if (noEncontrados.length > 0) {
+        html += `<div style="margin-top:10px;padding:8px 12px;background:#fef2f2;border-radius:6px;color:#b91c1c;font-size:.8rem">
+            ⚠️ No encontrados como Flux pendiente: ${noEncontrados.join(', ')}
+        </div>`;
+    }
+    prev.innerHTML = html;
+    btn.style.display = _loteItems.length > 0 ? 'inline-block' : 'none';
+}
+
+function confirmarLote() {
+    if (_loteItems.length === 0) return;
+    let count = 0;
+    for (const item of _loteItems) {
+        item.tx.ingreso  = item.monto;
+        item.tx.pendiente = false;
+        count++;
+    }
+    persist();
+    renderAll();
+    cerrarLoteFlux();
+    showToast(`✓ ${count} Flux completado${count!==1?'s':''} correctamente`);
 }
 
 function saveTransaction(e) {
@@ -1586,100 +1692,4 @@ function renderHistorial() {
         document.getElementById('h-sum-count').textContent = filtered.length + ' registro' + (filtered.length !== 1 ? 's' : '');
         document.getElementById('h-sum-ing').textContent   = fmt(totalIng);
         document.getElementById('h-sum-eg').textContent    = fmt(totalEg);
-        const netoEl = document.getElementById('h-sum-neto');
-        netoEl.textContent = fmtSigned(neto);
-        netoEl.style.color = neto >= 0 ? '#15803d' : 'var(--danger)';
-        sumEl.style.display = 'flex';
-    } else {
-        sumEl.style.display = 'none';
-    }
-}
-
-function clearHistorialFilters() {
-    ['h-search','h-nro','h-tipo','h-cuenta','h-cat','h-mes'].forEach(id => document.getElementById(id).value = '');
-    renderHistorial();
-}
-
-// ══════════════════════════════════════════════════════
-// RENDER TRANSFERENCIAS
-// ══════════════════════════════════════════════════════
-function renderTransfers() {
-    const tbody = document.getElementById('transf-list');
-    tbody.innerHTML = transfers.length === 0
-        ? `<tr class="empty-row"><td colspan="6">Sin transferencias registradas</td></tr>`
-        : [...transfers].reverse().map(t => `<tr>
-            <td>${fmtDate(t.fecha)}</td>
-            <td><span class="badge badge-red">${t.origen}</span></td>
-            <td style="text-align:center;color:var(--gray-300)">→</td>
-            <td><span class="badge badge-green">${t.destino}</span></td>
-            <td style="font-weight:600">${fmt(t.monto)}</td>
-            <td><button class="btn btn-ghost btn-sm" onclick="deleteTr('${t.id}')">Eliminar</button></td>
-          </tr>`).join('');
-}
-
-// ══════════════════════════════════════════════════════
-// INIT
-// ══════════════════════════════════════════════════════
-function init() {
-    const today = new Date().toISOString().split('T')[0];
-    document.getElementById('f-fecha').value = today;
-    document.getElementById('t-fecha').value = today;
-
-    const accountOpts = ACCOUNTS.map(a => `<option>${a}</option>`).join('');
-    ['f-cuenta','t-origen','t-destino','fg-cuenta','fi-cuenta','h-cuenta'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.innerHTML = el.innerHTML + accountOpts;
-    });
-
-    const catOpts = ALL_CATS.map(c => `<option>${c}</option>`).join('');
-    document.getElementById('h-cat').innerHTML += catOpts;
-
-    updateCatSelect();
-    renderDashboard();
-}
-
-init();
-</script>
-
-    <!-- EDIT MODAL -->
-    <div class="modal-overlay" id="edit-modal" onclick="if(event.target===this)closeEditModal()">
-        <div class="modal-box">
-            <h3>Editar transacción</h3>
-            <div class="tipo-toggle" style="margin-bottom:16px">
-                <button id="e-btn-ingreso" class="tipo-btn" onclick="setEditTipo('ingreso')">Ingreso</button>
-                <button id="e-btn-egreso"  class="tipo-btn" onclick="setEditTipo('egreso')">Egreso</button>
-            </div>
-            <div class="modal-grid">
-                <div class="form-group">
-                    <label>Fecha</label>
-                    <input type="date" id="e-fecha">
-                </div>
-                <div class="form-group">
-                    <label>Cuenta</label>
-                    <select id="e-cuenta"></select>
-                </div>
-                <div class="form-group">
-                    <label>Categoría</label>
-                    <select id="e-categoria"></select>
-                </div>
-                <div class="form-group">
-                    <label>Monto ($)</label>
-                    <input type="text" inputmode="decimal" id="e-monto" min="0" step="0.01" placeholder="0 o 4000+4000" onblur="evalMonto(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();evalMonto(this)}">
-                </div>
-                <div class="form-group full">
-                    <label>Descripción</label>
-                    <input type="text" id="e-desc" placeholder="Descripción">
-                </div>
-                <div class="form-group full" id="e-grupo-nro">
-                    <label>N° Interno</label>
-                    <input type="text" id="e-nro-interno" placeholder="Número de venta">
-                </div>
-            </div>
-            <div class="modal-actions">
-                <button class="btn btn-outline" onclick="closeEditModal()">Cancelar</button>
-                <button class="btn btn-primary" onclick="saveEdit()">Guardar cambios</button>
-            </div>
-        </div>
-    </div>
-</body>
-</html>
+        const netoEl = document.ge
