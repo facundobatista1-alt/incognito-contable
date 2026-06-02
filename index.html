@@ -1692,7 +1692,7 @@ function renderHistorial() {
         document.getElementById('h-sum-count').textContent = filtered.length + ' registro' + (filtered.length !== 1 ? 's' : '');
         document.getElementById('h-sum-ing').textContent   = fmt(totalIng);
         document.getElementById('h-sum-eg').textContent    = fmt(totalEg);
-        const netoEl = document.getElement('h-sum-neto');
+        const netoEl = document.getElementById('h-sum-neto');
         netoEl.textContent = fmtSigned(neto);
         netoEl.style.color = neto >= 0 ? '#15803d' : 'var(--danger)';
         sumEl.style.display = 'flex';
