@@ -883,18 +883,39 @@ async function initSupabase() {
     renderAll();
 }
 
-function sbSync() {
+let _dirtyTx = new Set();
+let _dirtyTr = new Set();
+
+function sbSync(txIds, trIds) {
     if (!sb) return;
+    if (txIds) txIds.forEach(id => _dirtyTx.add(id));
+    if (trIds) trIds.forEach(id => _dirtyTr.add(id));
     clearTimeout(_sbTimer);
     _sbTimer = setTimeout(async () => {
         try {
-            const CHUNK = 500;
-            const txRows = transactions.map(sbRow);
-            const trRows = transfers.map(trRow);
-            for (let i = 0; i < txRows.length; i += CHUNK)
-                await sb.from('transactions').upsert(txRows.slice(i, i + CHUNK));
-            for (let i = 0; i < trRows.length; i += CHUNK)
-                await sb.from('transfers').upsert(trRows.slice(i, i + CHUNK));
+            const toDirtyTx = [..._dirtyTx];
+            const toDirtyTr = [..._dirtyTr];
+            _dirtyTx.clear();
+            _dirtyTr.clear();
+            // If dirty sets are empty or too large, fall back to full sync
+            if (toDirtyTx.length > 0 && toDirtyTx.length <= 50) {
+                const rows = transactions.filter(t => toDirtyTx.includes(t.id)).map(sbRow);
+                if (rows.length) await sb.from('transactions').upsert(rows);
+            } else if (toDirtyTx.length > 50) {
+                const CHUNK = 500;
+                const txRows = transactions.map(sbRow);
+                for (let i = 0; i < txRows.length; i += CHUNK)
+                    await sb.from('transactions').upsert(txRows.slice(i, i + CHUNK));
+            }
+            if (toDirtyTr.length > 0 && toDirtyTr.length <= 50) {
+                const rows = transfers.filter(t => toDirtyTr.includes(t.id)).map(trRow);
+                if (rows.length) await sb.from('transfers').upsert(rows);
+            } else if (toDirtyTr.length > 50) {
+                const CHUNK = 500;
+                const trRows = transfers.map(trRow);
+                for (let i = 0; i < trRows.length; i += CHUNK)
+                    await sb.from('transfers').upsert(trRows.slice(i, i + CHUNK));
+            }
         } catch(e) { console.warn('Supabase sync failed:', e); }
     }, 1200);
 }
@@ -927,6 +948,11 @@ function persist() {
     localStorage.setItem('hc_tx', JSON.stringify(transactions));
     localStorage.setItem('hc_tr', JSON.stringify(transfers));
     sbSync();
+}
+
+function persistRow(txId) {
+    localStorage.setItem('hc_tx', JSON.stringify(transactions));
+    sbSync([txId]);
 }
 
 // ══════════════════════════════════════════════════════
@@ -1240,7 +1266,9 @@ function confirmarLote() {
         item.tx.pendiente = false;
         count++;
     }
-    persist();
+    const ids = _loteItems.map(item => item.tx.id);
+    localStorage.setItem('hc_tx', JSON.stringify(transactions));
+    sbSync(ids);
     renderAll();
     cerrarLoteFlux();
     showToast(`✓ ${count} Flux completado${count!==1?'s':''} correctamente`);
@@ -1643,6 +1671,8 @@ function renderIngresos() {
 // ══════════════════════════════════════════════════════
 
 let historialSort = { col: 'fecha', dir: 'desc' };
+let _histPage = 0;
+const HIST_PAGE_SIZE = 100;
 
 function sortHistorial(col) {
     if (historialSort.col === col) {
@@ -1660,13 +1690,15 @@ function sortHistorial(col) {
     renderHistorial();
 }
 
-function renderHistorial() {
+function renderHistorial(resetPage = true) {
     const search = (document.getElementById('h-search').value||'').toLowerCase();
     const tipo   = document.getElementById('h-tipo').value;
     const cuenta = document.getElementById('h-cuenta').value;
     const cat    = document.getElementById('h-cat').value;
     const mes    = document.getElementById('h-mes').value;
     const nro    = (document.getElementById('h-nro').value||'').trim().toLowerCase();
+
+    if (resetPage) _histPage = 0;
 
     let running = 0;
     const withSaldo = transactions.map(t => { running += t.ingreso - t.egreso; return {...t, saldo: running}; });
@@ -1686,16 +1718,26 @@ function renderHistorial() {
         if (nro)    filtered = filtered.filter(t => (t.nroInterno||'').toLowerCase().includes(nro));
     }
 
+    // Sort full set
+    const sorted = [...filtered].sort((a, b) => {
+        const col = historialSort.col;
+        const dir = historialSort.dir === 'asc' ? 1 : -1;
+        let va = a[col] ?? 0, vb = b[col] ?? 0;
+        if (typeof va === 'string') return va.localeCompare(vb) * dir;
+        return (va - vb) * dir;
+    });
+
+    window._filteredTx = sorted;
+
+    // Paginate
+    const totalPages = Math.max(1, Math.ceil(sorted.length / HIST_PAGE_SIZE));
+    if (_histPage >= totalPages) _histPage = totalPages - 1;
+    const pageRows = sorted.slice(_histPage * HIST_PAGE_SIZE, (_histPage + 1) * HIST_PAGE_SIZE);
+
     const tbody = document.getElementById('historial-list');
-    tbody.innerHTML = filtered.length === 0
+    tbody.innerHTML = sorted.length === 0
         ? `<tr class="empty-row"><td colspan="9">Sin resultados</td></tr>`
-        : [...filtered].sort((a, b) => {
-            const col = historialSort.col;
-            const dir = historialSort.dir === 'asc' ? 1 : -1;
-            let va = a[col] ?? 0, vb = b[col] ?? 0;
-            if (typeof va === 'string') return va.localeCompare(vb) * dir;
-            return (va - vb) * dir;
-        }).map(t => {
+        : pageRows.map(t => {
             const isPending = t.pendiente && t.cuenta === 'Flux';
             return `<tr class="${isPending ? 'flux-pendiente' : ''}">
             <td>${fmtDate(t.fecha)}</td>
@@ -1714,7 +1756,31 @@ function renderHistorial() {
           </tr>`;
         }).join('');
 
-    window._filteredTx = filtered;
+    // Pagination controls
+    const from = sorted.length === 0 ? 0 : _histPage * HIST_PAGE_SIZE + 1;
+    const to   = Math.min((_histPage + 1) * HIST_PAGE_SIZE, sorted.length);
+    let pagHtml = '';
+    if (totalPages > 1) {
+        pagHtml = `<div style="display:flex;align-items:center;justify-content:space-between;padding:.6rem .5rem;font-size:.82rem;color:#6b7280;border-top:1px solid #f3f4f6;margin-top:4px">
+            <span>${from}–${to} de ${sorted.length} registros</span>
+            <div style="display:flex;gap:6px">
+                <button class="btn btn-outline btn-sm" onclick="_histPage=0;renderHistorial(false)" ${_histPage===0?'disabled':''}>«</button>
+                <button class="btn btn-outline btn-sm" onclick="_histPage--;renderHistorial(false)" ${_histPage===0?'disabled':''}>‹ Ant</button>
+                <span style="padding:4px 10px;background:#f3f4f6;border-radius:6px;font-weight:600">${_histPage+1} / ${totalPages}</span>
+                <button class="btn btn-outline btn-sm" onclick="_histPage++;renderHistorial(false)" ${_histPage>=totalPages-1?'disabled':''}>Sig ›</button>
+                <button class="btn btn-outline btn-sm" onclick="_histPage=${totalPages-1};renderHistorial(false)" ${_histPage>=totalPages-1?'disabled':''}>»</button>
+            </div>
+        </div>`;
+    } else if (sorted.length > 0) {
+        pagHtml = `<div style="padding:.4rem .5rem;font-size:.78rem;color:#9ca3af;border-top:1px solid #f3f4f6;margin-top:4px">${sorted.length} registro${sorted.length!==1?'s':''}</div>`;
+    }
+    let pagEl = document.getElementById('historial-pagination');
+    if (!pagEl) {
+        pagEl = document.createElement('div');
+        pagEl.id = 'historial-pagination';
+        document.querySelector('#historial-list').closest('.table-card').appendChild(pagEl);
+    }
+    pagEl.innerHTML = pagHtml;
 
     // ── summary bar ──
     const sumEl = document.getElementById('historial-summary');
