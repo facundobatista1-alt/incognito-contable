@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hoja Contable — Incognito</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         :root {
             --primary:       #6C3FC5;
@@ -715,6 +716,7 @@
                 </label>
                 <button class="btn btn-sm" style="background:#f59e0b;color:white;border:none;font-weight:600;" onclick="abrirLoteFlux()">⚡ Completar por lote</button>
                 <button class="btn btn-outline btn-sm" onclick="clearHistorialFilters()">Limpiar</button>
+                <button class="btn btn-sm" style="background:#16a34a;color:white;border:none;font-weight:600;" onclick="exportarExcel()">⬇ Excel</button>
             </div>
             <div id="historial-summary" style="display:none;gap:1rem;flex-wrap:wrap;padding:.6rem 1rem;background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;margin-bottom:.75rem;align-items:center;font-size:.9rem;">
                 <span style="color:var(--text-muted);font-size:.82rem;" id="h-sum-count"></span>
@@ -1244,6 +1246,35 @@ function confirmarLote() {
     showToast(`✓ ${count} Flux completado${count!==1?'s':''} correctamente`);
 }
 
+function exportarExcel() {
+    const rows = (window._filteredTx || []);
+    if (rows.length === 0) { showToast("No hay datos para exportar"); return; }
+
+    const headers = ["Fecha","Descripción","N° Interno","Categoría","Cuenta","Ingreso","Egreso","Saldo","Estado"];
+    const data = rows.map(t => [
+        t.fecha,
+        t.descripcion || "",
+        t.nroInterno  || "",
+        t.categoria   || "",
+        t.cuenta      || "",
+        t.ingreso > 0 ? t.ingreso : "",
+        t.egreso  > 0 ? t.egreso  : "",
+        t.saldo,
+        (t.pendiente && t.cuenta === "Flux") ? "PENDIENTE" : ""
+    ]);
+
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+    ws["!cols"] = [10,28,12,18,12,14,14,14,12].map(w => ({wch:w}));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Historial");
+
+    const mes = document.getElementById("h-mes")?.value || "";
+    const suffix = mes ? "_" + mes : "";
+    XLSX.writeFile(wb, "Incognito_Historial" + suffix + ".xlsx");
+    showToast("✓ Excel descargado");
+}
+
 function saveTransaction(e) {
     e.preventDefault();
     const tipo       = document.getElementById('f-tipo').value;
@@ -1682,6 +1713,8 @@ function renderHistorial() {
             </td>
           </tr>`;
         }).join('');
+
+    window._filteredTx = filtered;
 
     // ── summary bar ──
     const sumEl = document.getElementById('historial-summary');
