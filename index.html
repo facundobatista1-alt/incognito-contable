@@ -983,11 +983,17 @@ function fmtDate(d) {
 }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
 
-function getAccountBalance(account) {
-    const txBal = transactions.reduce((s, t) => t.cuenta === account ? s + t.ingreso - t.egreso : s, 0);
+function getAccountBalance(account, upTo) {
+    // upTo = 'YYYY-MM-DD' cutoff (inclusive). If omitted, use all transactions.
+    const txBal = transactions.reduce((s, t) => {
+        if (t.cuenta !== account) return s;
+        if (upTo && t.fecha > upTo) return s;
+        return s + t.ingreso - t.egreso;
+    }, 0);
     const trBal = transfers.reduce((s, t) => {
+        if (upTo && t.fecha > upTo) return s;
         if (t.destino === account) return s + t.monto;
-        if (t.origen === account) return s - t.monto;
+        if (t.origen  === account) return s - t.monto;
         return s;
     }, 0);
     return txBal + trBal;
@@ -1411,6 +1417,34 @@ function setPeriod(p) {
     renderDashboard();
 }
 
+function getPeriodEndDate() {
+    // Returns 'YYYY-MM-DD' for the last day of the selected period,
+    // or null if period is 'all' (meaning: show current balance).
+    const now   = new Date();
+    const yy    = now.getFullYear();
+    const mm    = now.getMonth(); // 0-indexed
+    if (dashPeriod === 'all') return null;
+    if (dashPeriod === 'month') {
+        // Last day of current month — but cap at today
+        const today = now.toISOString().split('T')[0];
+        return today;
+    }
+    if (dashPeriod === 'prev') {
+        // Last day of previous month
+        const lastDay = new Date(yy, mm, 0); // day 0 of current month = last day of prev month
+        return lastDay.toISOString().split('T')[0];
+    }
+    if (dashPeriod === 'year') {
+        const today = now.toISOString().split('T')[0];
+        return today;
+    }
+    if (dashPeriod === 'custom') {
+        const hasta = document.getElementById('d-hasta')?.value;
+        return hasta || null;
+    }
+    return null;
+}
+
 function getDashTx() {
     const now   = new Date();
     const yy    = now.getFullYear();
@@ -1458,14 +1492,18 @@ function renderDashboard() {
         ${bestMonth ? `<div class="kpi-card"><div class="kpi-label">Mejor mes</div><div class="kpi-value gray">${bestMonth[0]}</div><div class="kpi-sub">${fmt(bestMonth[1])}</div></div>` : ''}
     `;
 
-    // Account balances (always full data)
-    document.getElementById('dash-accounts').innerHTML = ACCOUNTS.map(acc => {
-        const bal = getAccountBalance(acc);
-        return `<div class="account-card">
-            <div class="account-name">${acc}</div>
-            <div class="account-balance ${bal>=0?'pos':'neg'}">${fmtSigned(bal)}</div>
-        </div>`;
-    }).join('');
+    // Account balances — frozen at end of selected period (or current if "all")
+    const balCutoff = getPeriodEndDate();
+    const balLabel  = balCutoff ? `Al ${fmtDate(balCutoff)}` : 'Saldo actual';
+    document.getElementById('dash-accounts').innerHTML =
+        `<div style="grid-column:1/-1;font-size:.72rem;color:#9ca3af;font-weight:500;letter-spacing:.03em;text-transform:uppercase;margin-bottom:-4px">${balLabel}</div>` +
+        ACCOUNTS.map(acc => {
+            const bal = getAccountBalance(acc, balCutoff);
+            return `<div class="account-card">
+                <div class="account-name">${acc}</div>
+                <div class="account-balance ${bal>=0?'pos':'neg'}">${fmtSigned(bal)}</div>
+            </div>`;
+        }).join('');
 
     // Recent 10 from filtered period
     const recent = [...tx].reverse().slice(0,10);
