@@ -1326,7 +1326,7 @@ function exportarExcel() {
     showToast("✓ Excel descargado");
 }
 
-function saveTransaction(e) {
+async function saveTransaction(e) {
     e.preventDefault();
     const tipo       = document.getElementById('f-tipo').value;
     const fecha      = document.getElementById('f-fecha').value;
@@ -1338,12 +1338,23 @@ function saveTransaction(e) {
     const nroInterno = cat === 'Venta de producto' ? document.getElementById('f-nro-interno').value.trim() : '';
     const isFluxPending = cuenta === 'Flux' && monto === 0;
 
-    transactions.push({ id: uid(), fecha, categoria: cat, cuenta, descripcion: desc, nroInterno,
+    const newTx = { id: uid(), fecha, categoria: cat, cuenta, descripcion: desc, nroInterno,
         ingreso: tipo === 'ingreso' ? monto : 0,
         egreso:  tipo === 'egreso'  ? monto : 0,
-        pendiente: isFluxPending });
+        pendiente: isFluxPending };
+    transactions.push(newTx);
     transactions.sort((a,b) => a.fecha.localeCompare(b.fecha));
-    persist();
+    localStorage.setItem('hc_tx', JSON.stringify(transactions));
+
+    // Guardar en Supabase INMEDIATAMENTE (no esperar el debounce)
+    let sbOk = false;
+    if (sb) {
+        try {
+            const { error } = await sb.from('transactions').upsert([sbRow(newTx)]);
+            if (!error) sbOk = true;
+            else console.warn('Supabase upsert error:', error);
+        } catch(err) { console.warn('Supabase upsert failed:', err); }
+    }
 
     document.getElementById('f-monto').value = '';
     document.getElementById('f-desc').value = '';
@@ -1354,27 +1365,45 @@ function saveTransaction(e) {
         document.getElementById('f-categoria').value = '';
     }
     checkNroInterno();
-    showToast('✓ Transacción guardada correctamente');
+    if (sb && !sbOk) {
+        showToast('⚠️ Guardado local — sin conexión a la nube', 'warn');
+    } else {
+        showToast('✓ Transacción guardada correctamente');
+    }
 }
 
 // ══════════════════════════════════════════════════════
 // GUARDAR TRANSFERENCIA
 // ══════════════════════════════════════════════════════
-function saveTransfer(e) {
+async function saveTransfer(e) {
     e.preventDefault();
     const fecha   = document.getElementById('t-fecha').value;
     const origen  = document.getElementById('t-origen').value;
     const destino = document.getElementById('t-destino').value;
     const monto   = parseFloat(document.getElementById('t-monto').value);
     if (origen === destino) { alert('El origen y el destino no pueden ser la misma cuenta.'); return; }
-    transfers.push({ id: uid(), fecha, origen, destino, monto });
+    const newTr = { id: uid(), fecha, origen, destino, monto };
+    transfers.push(newTr);
     transfers.sort((a,b) => a.fecha.localeCompare(b.fecha));
-    persist();
+    localStorage.setItem('hc_tr', JSON.stringify(transfers));
+
+    let sbOk = false;
+    if (sb) {
+        try {
+            const { error } = await sb.from('transfers').upsert([trRow(newTr)]);
+            if (!error) sbOk = true;
+            else console.warn('Supabase transfer error:', error);
+        } catch(err) { console.warn('Supabase transfer failed:', err); }
+    }
     document.getElementById('t-monto').value = '';
     document.getElementById('t-origen').value = '';
     document.getElementById('t-destino').value = '';
     renderTransfers();
-    showToast('✓ Transferencia registrada correctamente');
+    if (sb && !sbOk) {
+        showToast('⚠️ Guardado local — sin conexión a la nube', 'warn');
+    } else {
+        showToast('✓ Transferencia registrada correctamente');
+    }
 }
 
 // ══════════════════════════════════════════════════════
@@ -1411,12 +1440,13 @@ function deleteTr(id) {
 // TOAST
 // ══════════════════════════════════════════════════════
 let toastTimer;
-function showToast(msg) {
+function showToast(msg, type) {
     const el = document.getElementById('toast');
     el.textContent = msg;
+    el.style.background = type === 'warn' ? '#d97706' : '';
     el.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+    toastTimer = setTimeout(() => { el.classList.remove('show'); el.style.background = ''; }, 3500);
 }
 
 // ══════════════════════════════════════════════════════
