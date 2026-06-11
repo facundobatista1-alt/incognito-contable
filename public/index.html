@@ -868,29 +868,9 @@ async function initSupabase() {
             transactions = seedTx;
             transfers    = seedTr;
         } else {
-            // Merge: Supabase is base, but recover unsynced local rows
-            const sbTxIds = new Set(txData.map(r => r.id));
-            const sbTrIds = new Set(trData.map(r => r.id));
-            const localTx = JSON.parse(localStorage.getItem('hc_tx') || '[]');
-            const localTr = JSON.parse(localStorage.getItem('hc_tr') || '[]');
-            const _deletedTx = new Set(JSON.parse(localStorage.getItem('hc_deleted_tx') || '[]'));
-            const _deletedTr = new Set(JSON.parse(localStorage.getItem('hc_deleted_tr') || '[]'));
-            const missingTx = localTx.filter(t => t.id && !sbTxIds.has(t.id) && !_deletedTx.has(t.id));
-            const missingTr = localTr.filter(t => t.id && !sbTrIds.has(t.id) && !_deletedTr.has(t.id));
-            transactions = [...txData.map(fromRow), ...missingTx].sort((a,b) => a.fecha.localeCompare(b.fecha));
-            transfers    = [...trData.map(fromTrRow), ...missingTr].sort((a,b) => a.fecha.localeCompare(b.fecha));
-            if (missingTx.length > 0) {
-                console.log('Recuperando ' + missingTx.length + ' movimiento(s) no sincronizado(s)...');
-                try {
-                    const CHUNK = 500;
-                    for (let i = 0; i < missingTx.length; i += CHUNK)
-                        await sb.from('transactions').upsert(missingTx.slice(i, i+CHUNK).map(sbRow));
-                } catch(e) { console.warn('No se pudieron subir movimientos recuperados:', e); }
-            }
-            if (missingTr.length > 0) {
-                try { await sb.from('transfers').upsert(missingTr.map(trRow)); }
-                catch(e) { console.warn('No se pudieron subir transferencias recuperadas:', e); }
-            }
+            // Supabase es la fuente de verdad — cargar directo sin merge
+            transactions = txData.map(fromRow).sort((a,b) => a.fecha.localeCompare(b.fecha));
+            transfers    = trData.map(fromTrRow).sort((a,b) => a.fecha.localeCompare(b.fecha));
             localStorage.setItem('hc_tx', JSON.stringify(transactions));
             localStorage.setItem('hc_tr', JSON.stringify(transfers));
         }
