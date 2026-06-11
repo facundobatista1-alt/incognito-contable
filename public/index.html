@@ -916,23 +916,26 @@ function sbSync(txIds, trIds) {
             _dirtyTx.clear();
             _dirtyTr.clear();
             const CHUNK = 500;
-            // 1-50 dirty IDs → sync only those (fast path)
-            // 0 or >50 → full sync (safe fallback — 0 happens when persist() is called without IDs)
-            if (toDirtyTx.length > 0 && toDirtyTx.length <= 50) {
-                const rows = transactions.filter(t => toDirtyTx.includes(t.id)).map(sbRow);
-                if (rows.length) await sb.from('transactions').upsert(rows);
-            } else {
-                const txRows = transactions.map(sbRow);
-                for (let i = 0; i < txRows.length; i += CHUNK)
-                    await sb.from('transactions').upsert(txRows.slice(i, i + CHUNK));
+            // Sync only dirty rows (1-50 fast path, >50 full sync)
+            if (toDirtyTx.length > 0) {
+                if (toDirtyTx.length <= 50) {
+                    const rows = transactions.filter(t => toDirtyTx.includes(t.id)).map(sbRow);
+                    if (rows.length) await sb.from('transactions').upsert(rows);
+                } else {
+                    const txRows = transactions.map(sbRow);
+                    for (let i = 0; i < txRows.length; i += CHUNK)
+                        await sb.from('transactions').upsert(txRows.slice(i, i + CHUNK));
+                }
             }
-            if (toDirtyTr.length > 0 && toDirtyTr.length <= 50) {
-                const rows = transfers.filter(t => toDirtyTr.includes(t.id)).map(trRow);
-                if (rows.length) await sb.from('transfers').upsert(rows);
-            } else if (transfers.length > 0) {
-                const trRows = transfers.map(trRow);
-                for (let i = 0; i < trRows.length; i += CHUNK)
-                    await sb.from('transfers').upsert(trRows.slice(i, i + CHUNK));
+            if (toDirtyTr.length > 0) {
+                if (toDirtyTr.length <= 50) {
+                    const rows = transfers.filter(t => toDirtyTr.includes(t.id)).map(trRow);
+                    if (rows.length) await sb.from('transfers').upsert(rows);
+                } else {
+                    const trRows = transfers.map(trRow);
+                    for (let i = 0; i < trRows.length; i += CHUNK)
+                        await sb.from('transfers').upsert(trRows.slice(i, i + CHUNK));
+                }
             }
         } catch(e) { console.warn('Supabase sync failed:', e); }
     }, 1200);
@@ -1139,7 +1142,8 @@ function saveEdit() {
     else { t.pendiente = false; }
 
     transactions.sort((a,b) => a.fecha.localeCompare(b.fecha));
-    persist();
+    localStorage.setItem('hc_tx', JSON.stringify(transactions));
+    if (sb) sb.from('transactions').upsert([sbRow(t)]).then(()=>{});
     renderAll();
     closeEditModal();
     showToast('✓ Transacción actualizada');
@@ -1185,7 +1189,8 @@ function completarFlux(id) {
     if (isNaN(monto) || monto <= 0) { alert('Monto inválido'); return; }
     t.ingreso = monto;
     t.pendiente = false;
-    persist();
+    localStorage.setItem('hc_tx', JSON.stringify(transactions));
+    if (sb) sb.from('transactions').upsert([sbRow(t)]).then(()=>{});
     renderAll();
     showToast('✓ Flux completado: ' + fmt(monto));
 }
@@ -1422,7 +1427,7 @@ function renderAll() {
 function deleteTx(id) {
     if (!confirm('¿Eliminar esta transacción? Esta acción no se puede deshacer.')) return;
     transactions = transactions.filter(t => t.id !== id);
-    persist();
+    localStorage.setItem('hc_tx', JSON.stringify(transactions));
     if (sb) sb.from('transactions').delete().eq('id', id).then(() => {});
     const active = document.querySelector('.page.active').id.replace('page-','');
     const renders = { dashboard: renderDashboard, historial: renderHistorial, gastos: renderGastos, ingresos: renderIngresos };
@@ -1431,7 +1436,7 @@ function deleteTx(id) {
 function deleteTr(id) {
     if (!confirm('¿Eliminar esta transferencia? Esta acción no se puede deshacer.')) return;
     transfers = transfers.filter(t => t.id !== id);
-    persist();
+    localStorage.setItem('hc_tr', JSON.stringify(transfers));
     if (sb) sb.from('transfers').delete().eq('id', id).then(() => {});
     renderTransfers();
 }
