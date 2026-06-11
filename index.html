@@ -915,12 +915,13 @@ function sbSync(txIds, trIds) {
             const toDirtyTr = [..._dirtyTr];
             _dirtyTx.clear();
             _dirtyTr.clear();
-            // If dirty sets are empty or too large, fall back to full sync
+            const CHUNK = 500;
+            // 1-50 dirty IDs → sync only those (fast path)
+            // 0 or >50 → full sync (safe fallback — 0 happens when persist() is called without IDs)
             if (toDirtyTx.length > 0 && toDirtyTx.length <= 50) {
                 const rows = transactions.filter(t => toDirtyTx.includes(t.id)).map(sbRow);
                 if (rows.length) await sb.from('transactions').upsert(rows);
-            } else if (toDirtyTx.length > 50) {
-                const CHUNK = 500;
+            } else {
                 const txRows = transactions.map(sbRow);
                 for (let i = 0; i < txRows.length; i += CHUNK)
                     await sb.from('transactions').upsert(txRows.slice(i, i + CHUNK));
@@ -928,8 +929,7 @@ function sbSync(txIds, trIds) {
             if (toDirtyTr.length > 0 && toDirtyTr.length <= 50) {
                 const rows = transfers.filter(t => toDirtyTr.includes(t.id)).map(trRow);
                 if (rows.length) await sb.from('transfers').upsert(rows);
-            } else if (toDirtyTr.length > 50) {
-                const CHUNK = 500;
+            } else if (transfers.length > 0) {
                 const trRows = transfers.map(trRow);
                 for (let i = 0; i < trRows.length; i += CHUNK)
                     await sb.from('transfers').upsert(trRows.slice(i, i + CHUNK));
