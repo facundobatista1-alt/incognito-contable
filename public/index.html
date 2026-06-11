@@ -873,8 +873,10 @@ async function initSupabase() {
             const sbTrIds = new Set(trData.map(r => r.id));
             const localTx = JSON.parse(localStorage.getItem('hc_tx') || '[]');
             const localTr = JSON.parse(localStorage.getItem('hc_tr') || '[]');
-            const missingTx = localTx.filter(t => t.id && !sbTxIds.has(t.id));
-            const missingTr = localTr.filter(t => t.id && !sbTrIds.has(t.id));
+            const _deletedTx = new Set(JSON.parse(localStorage.getItem('hc_deleted_tx') || '[]'));
+            const _deletedTr = new Set(JSON.parse(localStorage.getItem('hc_deleted_tr') || '[]'));
+            const missingTx = localTx.filter(t => t.id && !sbTxIds.has(t.id) && !_deletedTx.has(t.id));
+            const missingTr = localTr.filter(t => t.id && !sbTrIds.has(t.id) && !_deletedTr.has(t.id));
             transactions = [...txData.map(fromRow), ...missingTx].sort((a,b) => a.fecha.localeCompare(b.fecha));
             transfers    = [...trData.map(fromTrRow), ...missingTr].sort((a,b) => a.fecha.localeCompare(b.fecha));
             if (missingTx.length > 0) {
@@ -1428,6 +1430,8 @@ function deleteTx(id) {
     if (!confirm('¿Eliminar esta transacción? Esta acción no se puede deshacer.')) return;
     transactions = transactions.filter(t => t.id !== id);
     localStorage.setItem('hc_tx', JSON.stringify(transactions));
+    const _del = new Set(JSON.parse(localStorage.getItem('hc_deleted_tx') || '[]'));
+    _del.add(id); localStorage.setItem('hc_deleted_tx', JSON.stringify([..._del]));
     if (sb) sb.from('transactions').delete().eq('id', id).then(() => {});
     const active = document.querySelector('.page.active').id.replace('page-','');
     const renders = { dashboard: renderDashboard, historial: renderHistorial, gastos: renderGastos, ingresos: renderIngresos };
@@ -1437,6 +1441,8 @@ function deleteTr(id) {
     if (!confirm('¿Eliminar esta transferencia? Esta acción no se puede deshacer.')) return;
     transfers = transfers.filter(t => t.id !== id);
     localStorage.setItem('hc_tr', JSON.stringify(transfers));
+    const _del = new Set(JSON.parse(localStorage.getItem('hc_deleted_tr') || '[]'));
+    _del.add(id); localStorage.setItem('hc_deleted_tr', JSON.stringify([..._del]));
     if (sb) sb.from('transfers').delete().eq('id', id).then(() => {});
     renderTransfers();
 }
