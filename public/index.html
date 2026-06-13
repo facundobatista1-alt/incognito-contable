@@ -1500,9 +1500,16 @@ function getDashTx() {
 function renderDashboard() {
     const tx = getDashTx();
 
-    const totalIng = tx.reduce((s,t) => s + t.ingreso, 0);
-    const totalEg  = tx.reduce((s,t) => s + t.egreso, 0);
-    const saldo    = totalIng - totalEg;
+    // Excluir movimientos de Caja de Ahorro del cálculo ARS (sus montos son en USD)
+    const txARS = tx.filter(t => t.cuenta !== 'Caja de Ahorro');
+    const totalIng = txARS.reduce((s,t) => s + t.ingreso, 0);
+    const totalEg  = txARS.reduce((s,t) => s + t.egreso, 0);
+    const saldoARS = totalIng - totalEg;
+    // Agregar equivalente ARS de la Caja USD
+    const _cajaTC  = parseFloat(localStorage.getItem('hc_usd_tc') || '0');
+    const _cajaUSD = getCajaBalance();
+    const _cajaARS = _cajaTC > 0 ? _cajaUSD * _cajaTC : 0;
+    const saldo    = saldoARS + _cajaARS;
     const ventas   = tx.filter(t => t.categoria === 'Venta de producto' && t.ingreso > 0);
     const ticketAvg = ventas.length ? totalIng / ventas.length : 0;
     const fluxPend  = transactions.filter(t => t.cuenta === 'Flux' && t.pendiente);
@@ -1519,7 +1526,7 @@ function renderDashboard() {
     document.getElementById('dash-kpis').innerHTML = `
         <div class="kpi-card"><div class="kpi-label">Total ingresos</div><div class="kpi-value green">${fmt(totalIng)}</div></div>
         <div class="kpi-card"><div class="kpi-label">Total egresos</div><div class="kpi-value red">${fmt(totalEg)}</div></div>
-        <div class="kpi-card"><div class="kpi-label">Saldo neto</div><div class="kpi-value ${saldo>=0?'purple':'red'}">${fmtSigned(saldo)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Saldo neto</div><div class="kpi-value ${saldo>=0?'purple':'red'}">${fmtSigned(saldo)}</div>${_cajaTC>0&&_cajaUSD>0?`<div class="kpi-sub">Incluye USD ${_cajaUSD.toFixed(2)} ≈ ${fmtSigned(_cajaARS)}</div>`:''}</div>
         <div class="kpi-card"><div class="kpi-label">Ticket promedio</div><div class="kpi-value purple">${fmt(ticketAvg)}</div><div class="kpi-sub">${ventas.length} ventas</div></div>
         <div class="kpi-card"><div class="kpi-label">Flux pendientes</div><div class="kpi-value orange">${fluxPend.length}</div><div class="kpi-sub">${fluxMonto>0?fmt(fluxMonto)+' est.':'sin monto cargado'}</div></div>
         ${bestMonth ? `<div class="kpi-card"><div class="kpi-label">Mejor mes</div><div class="kpi-value gray">${bestMonth[0]}</div><div class="kpi-sub">${fmt(bestMonth[1])}</div></div>` : ''}
