@@ -840,6 +840,7 @@ async function fetchAll(table, orderCol) {
     while (true) {
         const { data, error } = await sb.from(table).select('*')
             .order(orderCol, { ascending: true })
+            .order('id',    { ascending: true })   // sort estable: evita duplicados en cortes de página
             .range(from, from + PAGE - 1);
         if (error) throw error;
         rows = rows.concat(data);
