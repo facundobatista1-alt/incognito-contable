@@ -1500,15 +1500,17 @@ function getDashTx() {
 
 function renderDashboard() {
     const tx = getDashTx();
+    // Corte de período — usado tanto para KPIs como para saldos de cuentas
+    const balCutoff = getPeriodEndDate();
 
     // Excluir movimientos de Caja de Ahorro del cálculo ARS (sus montos son en USD)
     const txARS = tx.filter(t => t.cuenta !== 'Caja de Ahorro');
     const totalIng = txARS.reduce((s,t) => s + t.ingreso, 0);
     const totalEg  = txARS.reduce((s,t) => s + t.egreso, 0);
     const saldoARS = totalIng - totalEg;
-    // Agregar equivalente ARS de la Caja USD
+    // Agregar equivalente ARS de la Caja USD — respetando el corte de período
     const _cajaTC  = parseFloat(localStorage.getItem('hc_usd_tc') || '0');
-    const _cajaUSD = getCajaBalance();
+    const _cajaUSD = getCajaBalance(balCutoff);
     const _cajaARS = _cajaTC > 0 ? _cajaUSD * _cajaTC : 0;
     const saldo    = saldoARS + _cajaARS;
     const ventas   = tx.filter(t => t.categoria === 'Venta de producto' && t.ingreso > 0);
@@ -1534,7 +1536,6 @@ function renderDashboard() {
     `;
 
     // Account balances — frozen at end of selected period
-    const balCutoff = getPeriodEndDate();
     const balLabel  = balCutoff ? `Al ${fmtDate(balCutoff)}` : 'Saldo actual';
     document.getElementById('dash-accounts').innerHTML =
         `<div style="grid-column:1/-1;font-size:.72rem;color:#9ca3af;font-weight:500;letter-spacing:.03em;text-transform:uppercase;margin-bottom:-4px">${balLabel}</div>` +
@@ -1546,7 +1547,7 @@ function renderDashboard() {
             </div>`;
         }).join('') +
         (() => {
-            const cajaUSD = getCajaBalance();
+            const cajaUSD = getCajaBalance(balCutoff);
             const tc = parseFloat(localStorage.getItem('hc_usd_tc') || '0');
             const arsEq = tc > 0 ? cajaUSD * tc : null;
             return `<div class="account-card" style="border-color:#86efac;background:#f0fdf4">
