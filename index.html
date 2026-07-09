@@ -2091,18 +2091,34 @@ function renderCaja() {
             <thead><tr style="border-bottom:2px solid #e5e7eb">
                 <th style="text-align:left;padding:6px 8px">Fecha</th>
                 <th style="text-align:left;padding:6px 8px">Tipo</th>
-                <th style="text-align:left;padding:6px 8px">Descripción</th>
+                <th style="text-align:right;padding:6px 8px">Tipo de cambio</th>
+                <th style="text-align:right;padding:6px 8px">ARS</th>
                 <th style="text-align:right;padding:6px 8px">USD</th>
             </tr></thead>
-            <tbody>${cajaTx.map(t => `
-                <tr style="border-bottom:1px solid #f3f4f6">
-                    <td style="padding:6px 8px">${fmtDate(t.fecha)}</td>
-                    <td style="padding:6px 8px"><span style="background:${t.categoria==='Rendimiento USD'?'#fef9c3':'#dcfce7'};color:${t.categoria==='Rendimiento USD'?'#a16207':'#15803d'};border-radius:4px;padding:2px 6px;font-size:.8rem">${t.categoria||''}</span></td>
-                    <td style="padding:6px 8px;color:#6b7280">${t.descripcion||''}</td>
-                    <td style="padding:6px 8px;text-align:right;font-weight:600;color:${t.ingreso>0?'#15803d':'#dc2626'}">
-                        ${t.ingreso > 0 ? '+USD '+t.ingreso.toFixed(2) : '-USD '+t.egreso.toFixed(2)}
+            <tbody>${cajaTx.map(t => {
+                const esDeposito  = t.categoria === 'Depósito USD';
+                const esRetiro    = t.categoria === 'Retiro USD';
+                const tcNum       = esDeposito || esRetiro ? parseFloat((t.descripcion||'').replace('TC ','')) : NaN;
+                const usdMov      = t.ingreso > 0 ? t.ingreso : t.egreso;
+                const arsEquiv    = !isNaN(tcNum) && tcNum > 0 ? usdMov * tcNum : null;
+                const badge       = t.categoria === 'Rendimiento USD'
+                    ? 'background:#fef9c3;color:#a16207'
+                    : esDeposito ? 'background:#dcfce7;color:#15803d'
+                    : 'background:#fee2e2;color:#dc2626';
+                return \`<tr style="border-bottom:1px solid #f3f4f6">
+                    <td style="padding:6px 8px;white-space:nowrap">\${fmtDate(t.fecha)}</td>
+                    <td style="padding:6px 8px"><span style="\${badge};border-radius:4px;padding:2px 6px;font-size:.8rem">\${t.categoria||''}</span></td>
+                    <td style="padding:6px 8px;text-align:right;color:#6b7280">
+                        \${!isNaN(tcNum) && tcNum > 0 ? '$'+fmt(tcNum) : '<span style="color:#d1d5db">—</span>'}
                     </td>
-                </tr>`).join('')}
+                    <td style="padding:6px 8px;text-align:right;color:#6b7280">
+                        \${arsEquiv !== null ? fmtSigned(t.ingreso > 0 ? -arsEquiv : arsEquiv) : esDeposito || esRetiro ? '<span style="color:#d1d5db">—</span>' : \`<span style="color:#9ca3af;font-size:.8rem">\${t.descripcion||''}</span>\`}
+                    </td>
+                    <td style="padding:6px 8px;text-align:right;font-weight:600;color:\${t.ingreso>0?'#15803d':'#dc2626'}">
+                        \${t.ingreso > 0 ? '+USD '+t.ingreso.toFixed(2) : '-USD '+t.egreso.toFixed(2)}
+                    </td>
+                </tr>\`;
+            }).join('')}
             </tbody>
         </table>`;
 }
