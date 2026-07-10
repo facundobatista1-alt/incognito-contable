@@ -2207,40 +2207,39 @@ function getMpKpiHtml() {
 // ══════════════════════════════════════════════════════
 
 async function confirmMpPago(id) {
-    const t = transactions.find(x => x.id === id);
+    var t = transactions.find(function(x){ return x.id === id; });
     if (!t) return;
     t.pendiente = false;
     localStorage.setItem('hc_tx', JSON.stringify(transactions));
     if (sb) await sb.from('transactions').upsert([sbRow(t)]);
     renderDashboard();
-    showToast('✓ Pago MP confirmado: ' + fmtSigned(t.ingreso));
+    showToast('Pago MP confirmado: ' + fmtSigned(t.ingreso));
 }
 
 async function confirmarMpGrupo(fechaLib) {
-    const grupo = transactions.filter(t =>
-        t.cuenta === 'MP FB' && t.pendiente && addDays(t.fecha, 10) === fechaLib
-    );
+    var grupo = transactions.filter(function(t){
+        return t.cuenta === 'MP FB' && t.pendiente && addDays(t.fecha, 10) === fechaLib;
+    });
     if (!grupo.length) return;
-    const total = grupo.reduce((s,t) => s + t.ingreso, 0);
+    var total = grupo.reduce(function(s,t){ return s + t.ingreso; }, 0);
     if (!confirm('Confirmar ' + grupo.length + ' cobro(s) por ' + fmtSigned(total) + ' del ' + fmtDate(fechaLib) + '?')) return;
-    grupo.forEach(t => t.pendiente = false);
+    grupo.forEach(function(t){ t.pendiente = false; });
     localStorage.setItem('hc_tx', JSON.stringify(transactions));
     if (sb) await sb.from('transactions').upsert(grupo.map(sbRow));
     renderDashboard();
-    showToast('✓ ' + grupo.length + ' cobros MP confirmados — ' + fmtSigned(total));
+    showToast(grupo.length + ' cobros MP confirmados — ' + fmtSigned(total));
 }
 
 function renderMpCobros() {
-    const el = document.getElementById('dash-mp-cobros');
+    var el = document.getElementById('dash-mp-cobros');
     if (!el) return;
-    const pending = transactions.filter(t => t.cuenta === 'MP FB' && t.pendiente);
+    var pending = transactions.filter(function(t){ return t.cuenta === 'MP FB' && t.pendiente; });
     if (pending.length === 0) { el.style.display = 'none'; return; }
 
-    // Agrupar por fecha de liberación
-    const grupos = {};
-    const today  = new Date().toISOString().split('T')[0];
-    pending.forEach(t => {
-        const lib = addDays(t.fecha, 10);
+    var today = new Date().toISOString().split('T')[0];
+    var grupos = {};
+    pending.forEach(function(t) {
+        var lib = addDays(t.fecha, 10);
         if (!grupos[lib]) grupos[lib] = [];
         grupos[lib].push(t);
     });
@@ -2249,12 +2248,14 @@ function renderMpCobros() {
         var txs   = grupos[lib];
         var total = txs.reduce(function(s,t){ return s + t.ingreso; }, 0);
         var vencido = lib <= today;
-        var color = vencido ? '#15803d' : (lib === addDays(today, 0) ? '#d97706' : '#1d4ed8');
+        var color = vencido ? '#15803d' : '#1d4ed8';
         var bg    = vencido ? '#f0fdf4' : '#eff6ff';
         var detalle = txs.map(function(t){
+            var desc = t.descripcion || t.nroInterno || 'sin desc';
             return '<span style="font-size:.78rem;color:#6b7280;display:block;margin-top:2px">'
-                + fmtDate(t.fecha) + ' — ' + (t.descripcion || t.nroInterno || 'sin desc') + ' — ' + fmtSigned(t.ingreso)
-                + ' <button onclick="confirmMpPago('' + t.id + '')" style="margin-left:6px;font-size:.72rem;background:none;border:1px solid #d1d5db;border-radius:4px;padding:1px 6px;cursor:pointer;color:#374151">✓</button>'
+                + fmtDate(t.fecha) + ' — ' + desc + ' — ' + fmtSigned(t.ingreso)
+                + ' <button data-id="' + t.id + '" onclick="confirmMpPago(this.dataset.id)"'
+                + ' style="margin-left:6px;font-size:.72rem;background:none;border:1px solid #d1d5db;border-radius:4px;padding:1px 6px;cursor:pointer;color:#374151">confirmar</button>'
                 + '</span>';
         }).join('');
         return '<div style="display:flex;align-items:flex-start;justify-content:space-between;padding:10px 14px;background:' + bg + ';border-radius:8px;border:1px solid #dbeafe;margin-bottom:6px">'
@@ -2266,7 +2267,8 @@ function renderMpCobros() {
             + '</div>'
             + '<div style="text-align:right;flex-shrink:0;padding-left:12px">'
             + '<div style="font-weight:700;font-size:1rem;color:' + color + '">' + fmtSigned(total) + '</div>'
-            + '<button onclick="confirmarMpGrupo('' + lib + '')" style="margin-top:4px;font-size:.75rem;background:#2563eb;color:white;border:none;border-radius:5px;padding:3px 10px;cursor:pointer">Confirmar todo</button>'
+            + '<button data-lib="' + lib + '" onclick="confirmarMpGrupo(this.dataset.lib)"'
+            + ' style="margin-top:4px;font-size:.75rem;background:#2563eb;color:white;border:none;border-radius:5px;padding:3px 10px;cursor:pointer">Confirmar todo</button>'
             + '</div>'
             + '</div>';
     });
@@ -2277,7 +2279,6 @@ function renderMpCobros() {
         + rows.join('')
         + '</div>';
 }
-
 
 </script>
 
