@@ -2120,20 +2120,25 @@ function renderCaja() {
     const totalDep = transactions.filter(t => t.cuenta === 'Caja de Ahorro' && t.categoria === 'Depósito USD').reduce((s,t) => s + t.ingreso, 0);
     const totalRend = transactions.filter(t => t.cuenta === 'Caja de Ahorro' && t.categoria === 'Rendimiento USD').reduce((s,t) => s + t.ingreso, 0);
 
-    document.getElementById('caja-resumen').innerHTML = `
-        <div class="account-card" style="border-color:#86efac;background:#f0fdf4">
-            <div class="account-name" style="color:#15803d">Saldo total</div>
-            <div class="account-balance pos" style="font-size:1.3rem">USD ${totalUSD.toFixed(2)}</div>
-            ${arsEq !== null ? `<div style="font-size:.78rem;color:#6b7280;margin-top:3px">≈ ${fmtSigned(arsEq)}</div>` : ''}
-        </div>
-        <div class="account-card">
-            <div class="account-name">Depositado</div>
-            <div class="account-balance pos">USD ${totalDep.toFixed(2)}</div>
-        </div>
-        <div class="account-card" style="border-color:#fde68a;background:#fefce8">
-            <div class="account-name" style="color:#a16207">Rendimiento acumulado</div>
-            <div class="account-balance pos" style="color:#d97706">USD ${totalRend.toFixed(2)}</div>
-        </div>`;
+    (function() {
+        var arsLine = arsEq !== null
+            ? '<div style="font-size:.78rem;color:#6b7280;margin-top:3px">≈ ' + fmtSigned(arsEq) + '</div>'
+            : '';
+        document.getElementById('caja-resumen').innerHTML =
+            '<div class="account-card" style="border-color:#86efac;background:#f0fdf4">'
+            + '<div class="account-name" style="color:#15803d">Saldo total</div>'
+            + '<div class="account-balance pos" style="font-size:1.3rem">USD ' + totalUSD.toFixed(2) + '</div>'
+            + arsLine
+            + '</div>'
+            + '<div class="account-card">'
+            + '<div class="account-name">Depositado</div>'
+            + '<div class="account-balance pos">USD ' + totalDep.toFixed(2) + '</div>'
+            + '</div>'
+            + '<div class="account-card" style="border-color:#fde68a;background:#fefce8">'
+            + '<div class="account-name" style="color:#a16207">Rendimiento acumulado</div>'
+            + '<div class="account-balance pos" style="color:#d97706">USD ' + totalRend.toFixed(2) + '</div>'
+            + '</div>';
+    })();
 
     if (cajaTx.length === 0) {
         document.getElementById('caja-historial').innerHTML = '<p style="color:#9ca3af;text-align:center;padding:20px">No hay movimientos aún</p>';
