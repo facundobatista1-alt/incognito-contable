@@ -556,7 +556,7 @@
                         </div>
                         <div class="form-group">
                             <label>Fecha</label>
-                            <input type="date" id="f-fecha" required>
+                            <input type="date" id="f-fecha" required onchange="checkFluxCuenta();updateMpFechaLib()">
                         </div>
                         <div class="form-group">
                             <label>Monto ($)</label>
@@ -573,6 +573,12 @@
                             <select id="f-cuenta" required onchange="checkFluxCuenta()">
                                 <option value="">Seleccioná una cuenta...</option>
                             </select>
+                        </div>
+                        <div id="grupo-mp-pending" style="display:none;margin:6px 0 2px;padding:8px 12px;background:#fef3c7;border-radius:8px;border:1px solid #fde68a">
+                            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.88rem;color:#92400e;font-weight:500">
+                                <input type="checkbox" id="f-mp-pending" checked style="accent-color:#f59e0b;width:16px;height:16px">
+                                Cobro en 10 días (liberación: <span id="f-mp-fecha-lib" style="font-weight:700"></span>)
+                            </label>
                         </div>
                         <div class="form-group" id="grupo-nro-interno" style="display:none">
                             <label>Número interno</label>
@@ -1020,6 +1026,7 @@ function setTipo(tipo) {
     document.getElementById('f-tipo').value = tipo;
     document.getElementById('btn-ing').className = 'type-btn' + (tipo === 'ingreso' ? ' ing' : '');
     document.getElementById('btn-eg').className  = 'type-btn' + (tipo === 'egreso' ? ' eg' : '');
+    checkFluxCuenta();
     updateCatSelect();
 }
 
@@ -1153,10 +1160,18 @@ function evalMonto(input) {
     } catch(e) {}
 }
 
+function addDays(dateStr, n) {
+    const d = new Date(dateStr + 'T00:00:00');
+    d.setDate(d.getDate() + n);
+    return d.toISOString().split('T')[0];
+}
+
 function checkFluxCuenta() {
-    const cuenta = document.getElementById('f-cuenta').value;
+    const cuenta   = document.getElementById('f-cuenta').value;
+    const tipo     = document.getElementById('f-tipo').value;
     const montoInput = document.getElementById('f-monto');
     const montoLabel = montoInput.closest('.form-group').querySelector('label');
+    // Flux: monto opcional
     if (cuenta === 'Flux') {
         montoInput.removeAttribute('required');
         montoInput.setAttribute('min', '0');
@@ -1166,6 +1181,19 @@ function checkFluxCuenta() {
         montoInput.setAttribute('min', '0.01');
         montoLabel.textContent = 'Monto ($)';
     }
+    // MP FB: mostrar checkbox de 10 días en ingresos
+    const mpRow = document.getElementById('grupo-mp-pending');
+    if (mpRow) {
+        const showMp = cuenta === 'MP FB' && tipo === 'ingreso';
+        mpRow.style.display = showMp ? 'block' : 'none';
+        if (showMp) updateMpFechaLib();
+    }
+}
+
+function updateMpFechaLib() {
+    const fecha = document.getElementById('f-fecha').value;
+    const el    = document.getElementById('f-mp-fecha-lib');
+    if (el && fecha) el.textContent = fmtDate(addDays(fecha, 10));
 }
 
 function completarFlux(id) {
@@ -1330,11 +1358,13 @@ async function saveTransaction(e) {
     const desc       = document.getElementById('f-desc').value.trim();
     const nroInterno = cat === 'Venta de producto' ? document.getElementById('f-nro-interno').value.trim() : '';
     const isFluxPending = cuenta === 'Flux' && monto === 0;
+    const isMpPending   = cuenta === 'MP FB' && tipo === 'ingreso'
+        && (document.getElementById('f-mp-pending')?.checked ?? false);
 
     const newTx = { id: uid(), fecha, categoria: cat, cuenta, descripcion: desc, nroInterno,
         ingreso: tipo === 'ingreso' ? monto : 0,
         egreso:  tipo === 'egreso'  ? monto : 0,
-        pendiente: isFluxPending };
+        pendiente: isFluxPending || isMpPending };
     transactions.push(newTx);
     transactions.sort((a,b) => a.fecha.localeCompare(b.fecha));
     localStorage.setItem('hc_tx', JSON.stringify(transactions));
@@ -1532,6 +1562,7 @@ function renderDashboard() {
         <div class="kpi-card"><div class="kpi-label">Saldo neto</div><div class="kpi-value ${saldo>=0?'purple':'red'}">${fmtSigned(saldo)}</div>${_cajaTC>0&&_cajaUSD>0?`<div class="kpi-sub">Incluye USD ${_cajaUSD.toFixed(2)} ≈ ${fmtSigned(_cajaARS)}</div>`:''}</div>
         <div class="kpi-card"><div class="kpi-label">Ticket promedio</div><div class="kpi-value purple">${fmt(ticketAvg)}</div><div class="kpi-sub">${ventas.length} ventas</div></div>
         <div class="kpi-card"><div class="kpi-label">Flux pendientes</div><div class="kpi-value orange">${fluxPend.length}</div><div class="kpi-sub">${fluxMonto>0?fmt(fluxMonto)+' est.':'sin monto cargado'}</div></div>
+        ${(()=>{ const mpP=transactions.filter(t=>t.cuenta==='MP FB'&&t.pendiente); const mpM=mpP.reduce((s,t)=>s+t.ingreso,0); return mpP.length>0?`<div class="kpi-card" style="border-color:#3b82f6"><div class="kpi-label" style="color:#1d4ed8">MP por cobrar</div><div class="kpi-value" style="color:#2563eb">${mpP.length}</div><div class="kpi-sub">${fmt(mpM)}</div></div>`:'' })()}
         ${bestMonth ? `<div class="kpi-card"><div class="kpi-label">Mejor mes</div><div class="kpi-value gray">${bestMonth[0]}</div><div class="kpi-sub">${fmt(bestMonth[1])}</div></div>` : ''}
     `;
 
@@ -1541,9 +1572,14 @@ function renderDashboard() {
         `<div style="grid-column:1/-1;font-size:.72rem;color:#9ca3af;font-weight:500;letter-spacing:.03em;text-transform:uppercase;margin-bottom:-4px">${balLabel}</div>` +
         ACCOUNTS.map(acc => {
             const bal = getAccountBalance(acc, balCutoff);
+            const mpPendAmt = acc === 'MP FB'
+                ? transactions.filter(t=>t.cuenta==='MP FB'&&t.pendiente&&(!balCutoff||t.fecha<=balCutoff)).reduce((s,t)=>s+t.ingreso,0)
+                : 0;
+            const dispBal = acc === 'MP FB' ? bal - mpPendAmt : bal;
             return `<div class="account-card">
                 <div class="account-name">${acc}</div>
-                <div class="account-balance ${bal>=0?'pos':'neg'}">${fmtSigned(bal)}</div>
+                <div class="account-balance ${dispBal>=0?'pos':'neg'}">${fmtSigned(dispBal)}</div>
+                ${mpPendAmt > 0 ? `<div style="font-size:.73rem;color:#2563eb;margin-top:2px">+ ${fmtSigned(mpPendAmt)} retenido</div>` : ''}
             </div>`;
         }).join('') +
         (() => {
@@ -1556,6 +1592,8 @@ function renderDashboard() {
                 ${arsEq !== null ? `<div style="font-size:.75rem;color:#6b7280;margin-top:2px">≈ ${fmtSigned(arsEq)}</div>` : ''}
             </div>`;
         })();
+
+    renderMpCobros();
 
     // Recent 10 from filtered period
     const recent = [...tx].reverse().slice(0,10);
@@ -2129,6 +2167,83 @@ function renderCaja() {
             + '<tbody>' + rows.join('') + '</tbody>'
             + '</table>';
     })();
+}
+
+
+// ══════════════════════════════════════════════════════
+// MP FB — COBROS A 10 DÍAS
+// ══════════════════════════════════════════════════════
+
+async function confirmMpPago(id) {
+    const t = transactions.find(x => x.id === id);
+    if (!t) return;
+    t.pendiente = false;
+    localStorage.setItem('hc_tx', JSON.stringify(transactions));
+    if (sb) await sb.from('transactions').upsert([sbRow(t)]);
+    renderDashboard();
+    showToast('✓ Pago MP confirmado: ' + fmtSigned(t.ingreso));
+}
+
+async function confirmarMpGrupo(fechaLib) {
+    const grupo = transactions.filter(t =>
+        t.cuenta === 'MP FB' && t.pendiente && addDays(t.fecha, 10) === fechaLib
+    );
+    if (!grupo.length) return;
+    const total = grupo.reduce((s,t) => s + t.ingreso, 0);
+    if (!confirm('Confirmar ' + grupo.length + ' cobro(s) por ' + fmtSigned(total) + ' del ' + fmtDate(fechaLib) + '?')) return;
+    grupo.forEach(t => t.pendiente = false);
+    localStorage.setItem('hc_tx', JSON.stringify(transactions));
+    if (sb) await sb.from('transactions').upsert(grupo.map(sbRow));
+    renderDashboard();
+    showToast('✓ ' + grupo.length + ' cobros MP confirmados — ' + fmtSigned(total));
+}
+
+function renderMpCobros() {
+    const el = document.getElementById('dash-mp-cobros');
+    if (!el) return;
+    const pending = transactions.filter(t => t.cuenta === 'MP FB' && t.pendiente);
+    if (pending.length === 0) { el.style.display = 'none'; return; }
+
+    // Agrupar por fecha de liberación
+    const grupos = {};
+    const today  = new Date().toISOString().split('T')[0];
+    pending.forEach(t => {
+        const lib = addDays(t.fecha, 10);
+        if (!grupos[lib]) grupos[lib] = [];
+        grupos[lib].push(t);
+    });
+
+    var rows = Object.keys(grupos).sort().map(function(lib) {
+        var txs   = grupos[lib];
+        var total = txs.reduce(function(s,t){ return s + t.ingreso; }, 0);
+        var vencido = lib <= today;
+        var color = vencido ? '#15803d' : (lib === addDays(today, 0) ? '#d97706' : '#1d4ed8');
+        var bg    = vencido ? '#f0fdf4' : '#eff6ff';
+        var detalle = txs.map(function(t){
+            return '<span style="font-size:.78rem;color:#6b7280;display:block;margin-top:2px">'
+                + fmtDate(t.fecha) + ' — ' + (t.descripcion || t.nroInterno || 'sin desc') + ' — ' + fmtSigned(t.ingreso)
+                + ' <button onclick="confirmMpPago('' + t.id + '')" style="margin-left:6px;font-size:.72rem;background:none;border:1px solid #d1d5db;border-radius:4px;padding:1px 6px;cursor:pointer;color:#374151">✓</button>'
+                + '</span>';
+        }).join('');
+        return '<div style="display:flex;align-items:flex-start;justify-content:space-between;padding:10px 14px;background:' + bg + ';border-radius:8px;border:1px solid #dbeafe;margin-bottom:6px">'
+            + '<div>'
+            + '<div style="font-weight:600;color:' + color + ';font-size:.9rem">'
+            + (vencido ? '✅ ' : '📅 ') + fmtDate(lib) + (vencido ? ' — disponible' : '')
+            + '</div>'
+            + detalle
+            + '</div>'
+            + '<div style="text-align:right;flex-shrink:0;padding-left:12px">'
+            + '<div style="font-weight:700;font-size:1rem;color:' + color + '">' + fmtSigned(total) + '</div>'
+            + '<button onclick="confirmarMpGrupo('' + lib + '')" style="margin-top:4px;font-size:.75rem;background:#2563eb;color:white;border:none;border-radius:5px;padding:3px 10px;cursor:pointer">Confirmar todo</button>'
+            + '</div>'
+            + '</div>';
+    });
+
+    el.style.display = 'block';
+    el.innerHTML = '<div style="background:white;border-radius:12px;padding:16px;border:1px solid #e5e7eb;margin-bottom:4px">'
+        + '<div style="font-weight:700;font-size:.95rem;color:#1e3a5f;margin-bottom:10px">📥 Próximos cobros MP (' + pending.length + ')</div>'
+        + rows.join('')
+        + '</div>';
 }
 
 
