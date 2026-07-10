@@ -726,6 +726,7 @@
                     Solo Flux pendientes
                 </label>
                 <button class="btn btn-sm" style="background:#f59e0b;color:white;border:none;font-weight:600;" onclick="abrirLoteFlux()">⚡ Completar por lote</button>
+                <button class="btn btn-sm" style="background:#2563eb;color:white;border:none;font-weight:600;" onclick="abrirCargaMp()">📥 Cargar MP</button>
                 <button class="btn btn-outline btn-sm" onclick="clearHistorialFilters()">Limpiar</button>
                 <button class="btn btn-sm" style="background:#16a34a;color:white;border:none;font-weight:600;" onclick="exportarExcel()">⬇ Excel</button>
             </div>
@@ -2207,6 +2208,105 @@ function getMpKpiHtml() {
         + '</div>';
 }
 
+
+// ══════════════════════════════════════════════════════
+// CARGA MP POR LOTE
+// ══════════════════════════════════════════════════════
+var _mpLoteItems = [];
+
+function abrirCargaMp() {
+    document.getElementById('carga-mp-input').value = '';
+    document.getElementById('carga-mp-preview').innerHTML = '';
+    document.getElementById('carga-mp-confirm-wrap').style.display = 'none';
+    _mpLoteItems = [];
+    document.getElementById('carga-mp-modal').classList.add('open');
+}
+
+function cerrarCargaMp() {
+    document.getElementById('carga-mp-modal').classList.remove('open');
+    _mpLoteItems = [];
+}
+
+function parsearCargaMp() {
+    var raw   = document.getElementById('carga-mp-input').value.trim();
+    var lines = raw.split('\n').map(function(l){ return l.trim(); }).filter(Boolean);
+    _mpLoteItems = [];
+    var errores = [];
+
+    lines.forEach(function(line) {
+        // Formato: DD/MM/YYYY - NNNN
+        var m = line.match(/^(\d{2})\/(\d{2})\/(\d{4})\s*-\s*(\S+)$/);
+        if (!m) {
+            errores.push(line);
+            return;
+        }
+        var fecha = m[3] + '-' + m[2] + '-' + m[1]; // YYYY-MM-DD
+        var nro   = m[4];
+        var fechaLib = addDays(fecha, 10);
+        _mpLoteItems.push({ fecha: fecha, nro: nro, fechaLib: fechaLib });
+    });
+
+    var prev = document.getElementById('carga-mp-preview');
+    if (_mpLoteItems.length === 0) {
+        prev.innerHTML = '<p style="color:#dc2626;font-size:.85rem">No se encontraron líneas válidas.</p>';
+        document.getElementById('carga-mp-confirm-wrap').style.display = 'none';
+        return;
+    }
+
+    var rows = _mpLoteItems.map(function(it) {
+        return '<tr>'
+            + '<td style="padding:4px 8px">' + fmtDate(it.fecha) + '</td>'
+            + '<td style="padding:4px 8px;font-family:monospace">' + it.nro + '</td>'
+            + '<td style="padding:4px 8px;color:#2563eb">libera ' + fmtDate(it.fechaLib) + '</td>'
+            + '<td style="padding:4px 8px;color:#9ca3af;font-style:italic">monto pendiente</td>'
+            + '</tr>';
+    }).join('');
+
+    prev.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:.83rem">'
+        + '<thead><tr style="border-bottom:1px solid #e5e7eb">'
+        + '<th style="text-align:left;padding:4px 8px">Fecha venta</th>'
+        + '<th style="text-align:left;padding:4px 8px">Orden</th>'
+        + '<th style="text-align:left;padding:4px 8px">Liberación</th>'
+        + '<th style="text-align:left;padding:4px 8px">Monto</th>'
+        + '</tr></thead><tbody>' + rows + '</tbody></table>'
+        + (errores.length ? '<p style="color:#f59e0b;margin-top:8px;font-size:.8rem">⚠️ Líneas ignoradas: ' + errores.join(', ') + '</p>' : '');
+
+    document.getElementById('carga-mp-confirm-wrap').style.display = 'block';
+    document.getElementById('carga-mp-confirm-btn').textContent = '✓ Cargar ' + _mpLoteItems.length + ' ventas';
+}
+
+async function confirmarCargaMp() {
+    if (!_mpLoteItems.length) return;
+    var nuevas = _mpLoteItems.map(function(it) {
+        return {
+            id: uid(),
+            fecha: it.fecha,
+            categoria: 'Venta de producto',
+            cuenta: 'MP FB',
+            descripcion: 'Item ' + it.nro,
+            nroInterno: it.nro,
+            ingreso: 0,
+            egreso: 0,
+            pendiente: true
+        };
+    });
+
+    nuevas.forEach(function(t){ transactions.push(t); });
+    transactions.sort(function(a,b){ return a.fecha.localeCompare(b.fecha); });
+    localStorage.setItem('hc_tx', JSON.stringify(transactions));
+
+    if (sb) {
+        var CHUNK = 100;
+        for (var i = 0; i < nuevas.length; i += CHUNK) {
+            await sb.from('transactions').upsert(nuevas.slice(i, i+CHUNK).map(sbRow));
+        }
+    }
+
+    cerrarCargaMp();
+    renderDashboard();
+    showToast(nuevas.length + ' ventas MP cargadas como pendientes');
+}
+
 // ══════════════════════════════════════════════════════
 // MP FB — COBROS A 10 DÍAS
 // ══════════════════════════════════════════════════════
@@ -2214,6 +2314,14 @@ function getMpKpiHtml() {
 async function confirmMpPago(id) {
     var t = transactions.find(function(x){ return x.id === id; });
     if (!t) return;
+    // Si no tiene monto, pedirlo antes de confirmar
+    if (!t.ingreso || t.ingreso === 0) {
+        var val = prompt('Ingresá el monto recibido para orden ' + (t.nroInterno || t.descripcion || '') + ':');
+        if (val === null) return;
+        var monto = parseFloat(val.replace(/[.,](?=\d{3})/g, '').replace(',', '.'));
+        if (!monto || monto <= 0) { alert('Monto inválido'); return; }
+        t.ingreso = monto;
+    }
     t.pendiente = false;
     localStorage.setItem('hc_tx', JSON.stringify(transactions));
     if (sb) await sb.from('transactions').upsert([sbRow(t)]);
@@ -2250,30 +2358,49 @@ function renderMpCobros() {
     });
 
     var rows = Object.keys(grupos).sort().map(function(lib) {
-        var txs   = grupos[lib];
-        var total = txs.reduce(function(s,t){ return s + t.ingreso; }, 0);
+        var txs     = grupos[lib];
+        var sinMonto = txs.filter(function(t){ return !t.ingreso || t.ingreso === 0; });
+        var conMonto = txs.filter(function(t){ return t.ingreso > 0; });
+        var total   = txs.reduce(function(s,t){ return s + t.ingreso; }, 0);
         var vencido = lib <= today;
-        var color = vencido ? '#15803d' : '#1d4ed8';
-        var bg    = vencido ? '#f0fdf4' : '#eff6ff';
-        var detalle = txs.map(function(t){
+        var color   = vencido && conMonto.length > 0 ? '#15803d' : vencido ? '#92400e' : '#1d4ed8';
+        var bg      = vencido && conMonto.length > 0 ? '#f0fdf4' : vencido ? '#fef3c7' : '#eff6ff';
+        var icono   = vencido && conMonto.length > 0 ? '✅' : vencido ? '⏰' : '📅';
+
+        var detalleConMonto = conMonto.map(function(t){
             var desc = t.descripcion || t.nroInterno || 'sin desc';
             return '<span style="font-size:.78rem;color:#6b7280;display:block;margin-top:2px">'
-                + fmtDate(t.fecha) + ' — ' + desc + ' — ' + fmtSigned(t.ingreso)
+                + desc + ' — ' + fmtSigned(t.ingreso)
                 + ' <button data-id="' + t.id + '" onclick="confirmMpPago(this.dataset.id)"'
-                + ' style="margin-left:6px;font-size:.72rem;background:none;border:1px solid #d1d5db;border-radius:4px;padding:1px 6px;cursor:pointer;color:#374151">confirmar</button>'
+                + ' style="margin-left:6px;font-size:.72rem;background:none;border:1px solid #d1d5db;border-radius:4px;padding:1px 6px;cursor:pointer">confirmar</button>'
                 + '</span>';
         }).join('');
+
+        var detalleSinMonto = sinMonto.map(function(t){
+            var desc = t.nroInterno || t.descripcion || t.id.slice(0,8);
+            return '<span style="font-size:.78rem;color:#9ca3af;display:block;margin-top:2px">'
+                + desc + ' — <em>sin monto</em>'
+                + ' <button data-id="' + t.id + '" onclick="confirmMpPago(this.dataset.id)"'
+                + ' style="margin-left:6px;font-size:.72rem;background:#f59e0b;color:white;border:none;border-radius:4px;padding:1px 6px;cursor:pointer">$ ingresar</button>'
+                + '</span>';
+        }).join('');
+
+        var confirmBtn = conMonto.length > 0
+            ? '<button data-lib="' + lib + '" onclick="confirmarMpGrupo(this.dataset.lib)"'
+              + ' style="margin-top:4px;font-size:.75rem;background:#2563eb;color:white;border:none;border-radius:5px;padding:3px 10px;cursor:pointer">Confirmar cobrados</button>'
+            : '';
+
         return '<div style="display:flex;align-items:flex-start;justify-content:space-between;padding:10px 14px;background:' + bg + ';border-radius:8px;border:1px solid #dbeafe;margin-bottom:6px">'
-            + '<div>'
+            + '<div style="flex:1">'
             + '<div style="font-weight:600;color:' + color + ';font-size:.9rem">'
-            + (vencido ? '✅ ' : '📅 ') + fmtDate(lib) + (vencido ? ' — disponible' : '')
+            + icono + ' ' + fmtDate(lib)
+            + (sinMonto.length > 0 ? ' <span style="font-size:.75rem;color:#92400e;font-weight:400">(' + sinMonto.length + ' sin monto)</span>' : '')
             + '</div>'
-            + detalle
+            + detalleConMonto + detalleSinMonto
             + '</div>'
             + '<div style="text-align:right;flex-shrink:0;padding-left:12px">'
-            + '<div style="font-weight:700;font-size:1rem;color:' + color + '">' + fmtSigned(total) + '</div>'
-            + '<button data-lib="' + lib + '" onclick="confirmarMpGrupo(this.dataset.lib)"'
-            + ' style="margin-top:4px;font-size:.75rem;background:#2563eb;color:white;border:none;border-radius:5px;padding:3px 10px;cursor:pointer">Confirmar todo</button>'
+            + '<div style="font-weight:700;font-size:1rem;color:' + color + '">' + (total > 0 ? fmtSigned(total) : '—') + '</div>'
+            + confirmBtn
             + '</div>'
             + '</div>';
     });
@@ -2286,6 +2413,28 @@ function renderMpCobros() {
 }
 
 </script>
+
+    <!-- CARGA MP MODAL -->
+    <div class="modal-overlay" id="carga-mp-modal" onclick="if(event.target===this)cerrarCargaMp()" style="z-index:300">
+        <div class="modal-box" style="max-width:560px">
+            <h3>📥 Carga MP por lote</h3>
+            <p style="font-size:.85rem;color:#6b7280;margin-bottom:10px">
+                Pegá las líneas de la tienda. Formato: <code style="background:#f3f4f6;padding:2px 6px;border-radius:4px">10/07/2026 - 7493</code>
+            </p>
+            <p style="font-size:.82rem;color:#92400e;background:#fef3c7;border-radius:6px;padding:8px 10px;margin-bottom:12px">
+                ⚠️ Las ventas se cargan <strong>sin monto</strong> — lo confirmás cuando llegue el pago a los 10 días.
+            </p>
+            <textarea id="carga-mp-input" rows="8" style="width:100%;font-family:monospace;font-size:.85rem;border:1px solid #d1d5db;border-radius:8px;padding:10px;box-sizing:border-box" placeholder="10/07/2026 - 7493&#10;10/07/2026 - 7494&#10;11/07/2026 - 7495"></textarea>
+            <div style="margin-top:10px;display:flex;gap:8px">
+                <button class="btn btn-primary" onclick="parsearCargaMp()">Previsualizar</button>
+                <button class="btn btn-outline" onclick="cerrarCargaMp()">Cancelar</button>
+            </div>
+            <div id="carga-mp-preview" style="margin-top:12px"></div>
+            <div id="carga-mp-confirm-wrap" style="display:none;margin-top:10px">
+                <button class="btn btn-primary" id="carga-mp-confirm-btn" onclick="confirmarCargaMp()">✓ Cargar todas</button>
+            </div>
+        </div>
+    </div>
 
     <!-- LOTE FLUX MODAL -->
     <div class="modal-overlay" id="lote-flux-modal" onclick="if(event.target===this)cerrarLoteFlux()" style="z-index:300">
