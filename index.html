@@ -1437,9 +1437,14 @@ function renderAll() {
     const active = document.querySelector('.page.active');
     const pageId = active ? active.id.replace('page-','') : 'dashboard';
     const renders = { dashboard: renderDashboard, historial: renderHistorial, gastos: renderGastos, ingresos: renderIngresos, transfers: renderTransfers, caja: renderCaja };
-    if (renders[pageId]) renders[pageId]();
-    // Always keep dashboard charts fresh
-    if (pageId !== 'dashboard') renderDashboard();
+    try {
+        if (renders[pageId]) renders[pageId]();
+        if (pageId !== 'dashboard') renderDashboard();
+    } catch(err) {
+        console.error('renderAll error:', err);
+        const kpi = document.getElementById('dash-kpis');
+        if (kpi) kpi.innerHTML = '<div style="color:red;padding:12px;font-family:monospace;font-size:.8rem;background:#fef2f2;border-radius:8px;grid-column:1/-1">ERROR: ' + err.message + '<br>' + (err.stack||'').split('\n').slice(0,4).join('<br>') + '</div>';
+    }
 }
 
 function deleteTx(id) {
