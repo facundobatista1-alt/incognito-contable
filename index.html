@@ -1556,18 +1556,27 @@ function renderDashboard() {
     });
     const bestMonth = Object.entries(byMonth).sort((a,b)=>b[1]-a[1])[0];
 
-    document.getElementById('dash-kpis').innerHTML = `
-        <div class="kpi-card"><div class="kpi-label">Total ingresos</div><div class="kpi-value green">${fmt(totalIng)}</div></div>
-        <div class="kpi-card"><div class="kpi-label">Total egresos</div><div class="kpi-value red">${fmt(totalEg)}</div></div>
-        <div class="kpi-card"><div class="kpi-label">Saldo neto</div><div class="kpi-value ${saldo>=0?'purple':'red'}">${fmtSigned(saldo)}</div>${_cajaTC>0&&_cajaUSD>0?`<div class="kpi-sub">Incluye USD ${_cajaUSD.toFixed(2)} ≈ ${fmtSigned(_cajaARS)}</div>`:''}</div>
-        <div class="kpi-card"><div class="kpi-label">Ticket promedio</div><div class="kpi-value purple">${fmt(ticketAvg)}</div><div class="kpi-sub">${ventas.length} ventas</div></div>
-        <div class="kpi-card"><div class="kpi-label">Flux pendientes</div><div class="kpi-value orange">${fluxPend.length}</div><div class="kpi-sub">${fluxMonto>0?fmt(fluxMonto)+' est.':'sin monto cargado'}</div></div>
-        ${(()=>{ const mpP=transactions.filter(t=>t.cuenta==='MP FB'&&t.pendiente); const mpM=mpP.reduce((s,t)=>s+t.ingreso,0); return mpP.length>0?`<div class="kpi-card" style="border-color:#3b82f6"><div class="kpi-label" style="color:#1d4ed8">MP por cobrar</div><div class="kpi-value" style="color:#2563eb">${mpP.length}</div><div class="kpi-sub">${fmt(mpM)}</div></div>`:'' })()}
-        ${bestMonth ? `<div class="kpi-card"><div class="kpi-label">Mejor mes</div><div class="kpi-value gray">${bestMonth[0]}</div><div class="kpi-sub">${fmt(bestMonth[1])}</div></div>` : ''}
-    `;
+        (function() {
+        var kpiHtml = ''
+            + '<div class="kpi-card"><div class="kpi-label">Total ingresos</div><div class="kpi-value green">' + fmt(totalIng) + '</div></div>'
+            + '<div class="kpi-card"><div class="kpi-label">Total egresos</div><div class="kpi-value red">' + fmt(totalEg) + '</div></div>';
+        var saldoSub = (_cajaTC > 0 && _cajaUSD > 0)
+            ? '<div class="kpi-sub">Incluye USD ' + _cajaUSD.toFixed(2) + ' ≈ ' + fmtSigned(_cajaARS) + '</div>'
+            : '';
+        kpiHtml += '<div class="kpi-card"><div class="kpi-label">Saldo neto</div>'
+            + '<div class="kpi-value ' + (saldo >= 0 ? 'purple' : 'red') + '">' + fmtSigned(saldo) + '</div>'
+            + saldoSub + '</div>';
+        kpiHtml += '<div class="kpi-card"><div class="kpi-label">Ticket promedio</div><div class="kpi-value purple">' + fmt(ticketAvg) + '</div><div class="kpi-sub">' + ventas.length + ' ventas</div></div>';
+        kpiHtml += '<div class="kpi-card"><div class="kpi-label">Flux pendientes</div><div class="kpi-value orange">' + fluxPend.length + '</div><div class="kpi-sub">' + (fluxMonto > 0 ? fmt(fluxMonto) + ' est.' : 'sin monto cargado') + '</div></div>';
+        kpiHtml += getMpKpiHtml();
+        if (bestMonth) {
+            kpiHtml += '<div class="kpi-card"><div class="kpi-label">Mejor mes</div><div class="kpi-value gray">' + bestMonth[0] + '</div><div class="kpi-sub">' + fmt(bestMonth[1]) + '</div></div>';
+        }
+        document.getElementById('dash-kpis').innerHTML = kpiHtml;
+    })();
 
-    // Account balances — frozen at end of selected period
-    const balLabel  = balCutoff ? `Al ${fmtDate(balCutoff)}` : 'Saldo actual';
+        // Account balances — frozen at end of selected period
+    const balLabel  = balCutoff ? 'Al ' + fmtDate(balCutoff) : 'Saldo actual';
     document.getElementById('dash-accounts').innerHTML =
         `<div style="grid-column:1/-1;font-size:.72rem;color:#9ca3af;font-weight:500;letter-spacing:.03em;text-transform:uppercase;margin-bottom:-4px">${balLabel}</div>` +
         ACCOUNTS.map(acc => {
@@ -1576,21 +1585,27 @@ function renderDashboard() {
                 ? transactions.filter(t=>t.cuenta==='MP FB'&&t.pendiente&&(!balCutoff||t.fecha<=balCutoff)).reduce((s,t)=>s+t.ingreso,0)
                 : 0;
             const dispBal = acc === 'MP FB' ? bal - mpPendAmt : bal;
-            return `<div class="account-card">
-                <div class="account-name">${acc}</div>
-                <div class="account-balance ${dispBal>=0?'pos':'neg'}">${fmtSigned(dispBal)}</div>
-                ${mpPendAmt > 0 ? `<div style="font-size:.73rem;color:#2563eb;margin-top:2px">+ ${fmtSigned(mpPendAmt)} retenido</div>` : ''}
-            </div>`;
+            const retLabel = mpPendAmt > 0
+                ? '<div style="font-size:.73rem;color:#2563eb;margin-top:2px">+ ' + fmtSigned(mpPendAmt) + ' retenido</div>'
+                : '';
+            return '<div class="account-card">'
+                + '<div class="account-name">' + acc + '</div>'
+                + '<div class="account-balance ' + (dispBal>=0?'pos':'neg') + '">' + fmtSigned(dispBal) + '</div>'
+                + retLabel
+                + '</div>';
         }).join('') +
-        (() => {
-            const cajaUSD = getCajaBalance(balCutoff);
-            const tc = parseFloat(localStorage.getItem('hc_usd_tc') || '0');
-            const arsEq = tc > 0 ? cajaUSD * tc : null;
-            return `<div class="account-card" style="border-color:#86efac;background:#f0fdf4">
-                <div class="account-name" style="color:#15803d">💵 Caja USD</div>
-                <div class="account-balance pos" style="font-size:1.15rem">USD ${fmt(cajaUSD)}</div>
-                ${arsEq !== null ? `<div style="font-size:.75rem;color:#6b7280;margin-top:2px">≈ ${fmtSigned(arsEq)}</div>` : ''}
-            </div>`;
+        (function() {
+            var cajaUSD = getCajaBalance(balCutoff);
+            var tc = parseFloat(localStorage.getItem('hc_usd_tc') || '0');
+            var arsEq = tc > 0 ? cajaUSD * tc : null;
+            var arsLine = arsEq !== null
+                ? '<div style="font-size:.75rem;color:#6b7280;margin-top:2px">≈ ' + fmtSigned(arsEq) + '</div>'
+                : '';
+            return '<div class="account-card" style="border-color:#86efac;background:#f0fdf4">'
+                + '<div class="account-name" style="color:#15803d">💵 Caja USD</div>'
+                + '<div class="account-balance pos" style="font-size:1.15rem">USD ' + fmt(cajaUSD) + '</div>'
+                + arsLine
+                + '</div>';
         })();
 
     renderMpCobros();
@@ -2169,6 +2184,18 @@ function renderCaja() {
     })();
 }
 
+
+
+function getMpKpiHtml() {
+    var mpP = transactions.filter(function(t){ return t.cuenta === 'MP FB' && t.pendiente; });
+    if (!mpP.length) return '';
+    var mpM = mpP.reduce(function(s,t){ return s + t.ingreso; }, 0);
+    return '<div class="kpi-card" style="border-color:#3b82f6">'
+        + '<div class="kpi-label" style="color:#1d4ed8">MP por cobrar</div>'
+        + '<div class="kpi-value" style="color:#2563eb">' + mpP.length + '</div>'
+        + '<div class="kpi-sub">' + fmt(mpM) + '</div>'
+        + '</div>';
+}
 
 // ══════════════════════════════════════════════════════
 // MP FB — COBROS A 10 DÍAS
