@@ -2253,10 +2253,12 @@ function parsearCargaMp() {
         return;
     }
 
+    var hasTxId = _mpLoteItems.some(function(it){ return it.txId; });
     var rows = _mpLoteItems.map(function(it) {
         return '<tr>'
             + '<td style="padding:4px 8px">' + fmtDate(it.fecha) + '</td>'
             + '<td style="padding:4px 8px;font-family:monospace">' + it.nro + '</td>'
+            + (hasTxId ? '<td style="padding:4px 8px;font-family:monospace;color:#6b7280;font-size:.78rem">' + (it.txId || '—') + '</td>' : '')
             + '<td style="padding:4px 8px;color:#2563eb">libera ' + fmtDate(it.fechaLib) + '</td>'
             + '<td style="padding:4px 8px;color:#9ca3af;font-style:italic">monto pendiente</td>'
             + '</tr>';
@@ -2266,6 +2268,7 @@ function parsearCargaMp() {
         + '<thead><tr style="border-bottom:1px solid #e5e7eb">'
         + '<th style="text-align:left;padding:4px 8px">Fecha venta</th>'
         + '<th style="text-align:left;padding:4px 8px">Orden</th>'
+        + (hasTxId ? '<th style="text-align:left;padding:4px 8px">ID transacción</th>' : '')
         + '<th style="text-align:left;padding:4px 8px">Liberación</th>'
         + '<th style="text-align:left;padding:4px 8px">Monto</th>'
         + '</tr></thead><tbody>' + rows + '</tbody></table>'
@@ -2278,12 +2281,13 @@ function parsearCargaMp() {
 async function confirmarCargaMp() {
     if (!_mpLoteItems.length) return;
     var nuevas = _mpLoteItems.map(function(it) {
+        var desc = 'Item ' + it.nro + (it.txId ? ' | ' + it.txId : '');
         return {
             id: uid(),
             fecha: it.fecha,
             categoria: 'Venta de producto',
             cuenta: 'MP FB',
-            descripcion: 'Item ' + it.nro,
+            descripcion: desc,
             nroInterno: it.nro,
             ingreso: 0,
             egreso: 0,
@@ -2377,7 +2381,7 @@ function renderMpCobros() {
         }).join('');
 
         var detalleSinMonto = sinMonto.map(function(t){
-            var desc = t.nroInterno || t.descripcion || t.id.slice(0,8);
+            var desc = t.descripcion || t.nroInterno || t.id.slice(0,8);
             return '<span style="font-size:.78rem;color:#9ca3af;display:block;margin-top:2px">'
                 + desc + ' — <em>sin monto</em>'
                 + ' <button data-id="' + t.id + '" onclick="confirmMpPago(this.dataset.id)"'
