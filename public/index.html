@@ -2234,8 +2234,8 @@ function parsearCargaMp() {
     var errores = [];
 
     lines.forEach(function(line) {
-        // Formato: DD/MM/YYYY - NNNN
-        var m = line.match(/^(\d{2})\/(\d{2})\/(\d{4})\s*-\s*(\S+)$/);
+        // Formatos: DD/MM/YYYY - NNNN  o  DD/MM/YYYY - NNNN - TXID
+        var m = line.match(/^(\d{2})\/(\d{2})\/(\d{4})\s*-\s*(\S+?)(?:\s*-\s*(\S+))?$/);
         if (!m) {
             errores.push(line);
             return;
@@ -2243,7 +2243,8 @@ function parsearCargaMp() {
         var fecha = m[3] + '-' + m[2] + '-' + m[1]; // YYYY-MM-DD
         var nro   = m[4];
         var fechaLib = addDays(fecha, 10);
-        _mpLoteItems.push({ fecha: fecha, nro: nro, fechaLib: fechaLib });
+        var txId = m[5] || '';
+        _mpLoteItems.push({ fecha: fecha, nro: nro, txId: txId, fechaLib: fechaLib });
     });
 
     var prev = document.getElementById('carga-mp-preview');
@@ -2423,7 +2424,7 @@ function renderMpCobros() {
         <div class="modal-box" style="max-width:560px">
             <h3>📥 Carga MP por lote</h3>
             <p style="font-size:.85rem;color:#6b7280;margin-bottom:10px">
-                Pegá las líneas de la tienda. Formato: <code style="background:#f3f4f6;padding:2px 6px;border-radius:4px">10/07/2026 - 7493</code>
+                Pegá las líneas de la tienda. Formato: <code style="background:#f3f4f6;padding:2px 6px;border-radius:4px">14/07/2026 - 7639 - 168809729740</code>
             </p>
             <p style="font-size:.82rem;color:#92400e;background:#fef3c7;border-radius:6px;padding:8px 10px;margin-bottom:12px">
                 ⚠️ Las ventas se cargan <strong>sin monto</strong> — lo confirmás cuando llegue el pago a los 10 días.
