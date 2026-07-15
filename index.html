@@ -825,6 +825,15 @@ const SB_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsIn
 let sb        = null;
 let _sbTimer  = null;
 
+function parseTxIdMP(descripcion) {
+    if (!descripcion) return { desc: '', txId: '' };
+    var parts = descripcion.split(' | ');
+    if (parts.length >= 2 && /^\d{8,}$/.test(parts[parts.length - 1])) {
+        return { desc: parts.slice(0, -1).join(' | '), txId: parts[parts.length - 1] };
+    }
+    return { desc: descripcion, txId: '' };
+}
+
 function sbRow(t) {
     return {
         id: t.id, fecha: t.fecha, descripcion: t.descripcion || '',
@@ -1092,10 +1101,14 @@ function openEditModal(id) {
 
     document.getElementById('e-fecha').value   = t.fecha;
     document.getElementById('e-monto').value   = t.ingreso > 0 ? t.ingreso : t.egreso;
-    document.getElementById('e-desc').value    = t.descripcion || '';
+    var parsedDesc = parseTxIdMP(t.descripcion || '');
+    document.getElementById('e-desc').value    = parsedDesc.desc;
     document.getElementById('e-nro-interno').value = t.nroInterno || '';
+    document.getElementById('e-tx-id-mp').value    = parsedDesc.txId;
 
+    cuentaSel.onchange = function() { updateEditNroInterno(); updateEditTxId(); };
     updateEditNroInterno();
+    updateEditTxId();
     document.getElementById('edit-modal').classList.add('open');
 }
 
@@ -1120,6 +1133,11 @@ function updateEditNroInterno() {
     document.getElementById('e-grupo-nro').style.display = cat === 'Venta de producto' ? '' : 'none';
 }
 
+function updateEditTxId() {
+    const cuenta = document.getElementById('e-cuenta').value;
+    document.getElementById('e-grupo-txid').style.display = cuenta === 'MP FB' ? '' : 'none';
+}
+
 function closeEditModal() {
     document.getElementById('edit-modal').classList.remove('open');
     editingId = null;
@@ -1135,7 +1153,9 @@ function saveEdit() {
     t.fecha       = document.getElementById('e-fecha').value;
     t.cuenta      = document.getElementById('e-cuenta').value;
     t.categoria   = cat;
-    t.descripcion = document.getElementById('e-desc').value.trim();
+    var txIdMP    = document.getElementById('e-tx-id-mp').value.trim();
+    var rawDesc   = document.getElementById('e-desc').value.trim();
+    t.descripcion = rawDesc + (txIdMP ? ' | ' + txIdMP : '');
     t.nroInterno  = cat === 'Venta de producto' ? document.getElementById('e-nro-interno').value.trim() : '';
     t.ingreso     = wasIngreso ? monto : 0;
     t.egreso      = wasIngreso ? 0 : monto;
@@ -1900,8 +1920,8 @@ function renderHistorial(resetPage = true) {
             const rowClass     = isPending ? 'flux-pendiente' : isMpPending ? 'mp-pendiente' : '';
             return `<tr class="${rowClass}">
             <td>${fmtDate(t.fecha)}</td>
-            <td>${t.descripcion||'-'}</td>
-            <td>${t.nroInterno ? `<span class="badge badge-purple">#${t.nroInterno}</span>` : ''}${isPending ? ' <span class="badge badge-orange">PENDIENTE</span>' : ''}${isMpPending ? ' <span class="badge" style="background:#dbeafe;color:#1d4ed8">PENDIENTE MP</span>' : ''}</td>
+            <td>${(function(){ var p=parseTxIdMP(t.descripcion||''); return p.desc||'-'; })()}</td>
+            <td>${t.nroInterno ? `<span class="badge badge-purple">#${t.nroInterno}</span>` : ''}${(function(){ var p=parseTxIdMP(t.descripcion||''); return p.txId ? ' <span style=\'font-family:monospace;font-size:.75rem;color:#6b7280\'>' + p.txId + '</span>' : ''; })()}${isPending ? ' <span class="badge badge-orange">PENDIENTE</span>' : ''}${isMpPending ? ' <span class="badge" style="background:#dbeafe;color:#1d4ed8">PENDIENTE MP</span>' : ''}</td>
             <td><span class="badge badge-gray">${t.categoria}</span></td>
             <td>${t.cuenta}</td>
             <td class="amount-pos">${t.ingreso>0?fmt(t.ingreso):(isPending?'<em style="color:#9ca3af">–</em>':'')}</td>
@@ -2383,18 +2403,22 @@ function renderMpCobros() {
         var icono   = vencido && conMonto.length > 0 ? '✅' : vencido ? '⏰' : '📅';
 
         var detalleConMonto = conMonto.map(function(t){
-            var desc = t.descripcion || t.nroInterno || 'sin desc';
+            var parsed = parseTxIdMP(t.descripcion || '');
+            var desc   = parsed.desc || t.nroInterno || 'sin desc';
+            var txPart = parsed.txId ? ' <span style="font-family:monospace;color:#9ca3af;font-size:.75rem">' + parsed.txId + '</span>' : '';
             return '<span style="font-size:.78rem;color:#6b7280;display:block;margin-top:2px">'
-                + desc + ' — ' + fmtSigned(t.ingreso)
+                + desc + txPart + ' — ' + fmtSigned(t.ingreso)
                 + ' <button data-id="' + t.id + '" onclick="confirmMpPago(this.dataset.id)"'
                 + ' style="margin-left:6px;font-size:.72rem;background:none;border:1px solid #d1d5db;border-radius:4px;padding:1px 6px;cursor:pointer">confirmar</button>'
                 + '</span>';
         }).join('');
 
         var detalleSinMonto = sinMonto.map(function(t){
-            var desc = t.descripcion || t.nroInterno || t.id.slice(0,8);
+            var parsed = parseTxIdMP(t.descripcion || '');
+            var desc   = parsed.desc || t.nroInterno || t.id.slice(0,8);
+            var txPart = parsed.txId ? ' <span style="font-family:monospace;color:#9ca3af;font-size:.75rem">' + parsed.txId + '</span>' : '';
             return '<span style="font-size:.78rem;color:#9ca3af;display:block;margin-top:2px">'
-                + desc + ' — <em>sin monto</em>'
+                + desc + txPart + ' — <em>sin monto</em>'
                 + ' <button data-id="' + t.id + '" onclick="confirmMpPago(this.dataset.id)"'
                 + ' style="margin-left:6px;font-size:.72rem;background:#f59e0b;color:white;border:none;border-radius:4px;padding:1px 6px;cursor:pointer">$ ingresar</button>'
                 + '</span>';
@@ -2580,6 +2604,10 @@ function renderMpCobros() {
                 <div class="form-group full" id="e-grupo-nro">
                     <label>N° Interno</label>
                     <input type="text" id="e-nro-interno" placeholder="Número de venta">
+                </div>
+                <div class="form-group full" id="e-grupo-txid" style="display:none">
+                    <label>ID de transacción MP</label>
+                    <input type="text" id="e-tx-id-mp" placeholder="ej: 168809729740" inputmode="numeric" style="font-family:monospace">
                 </div>
             </div>
             <div class="modal-actions">
