@@ -33,6 +33,7 @@
         /* ── FLUX PENDIENTE ── */
         .badge-orange { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
         tr.flux-pendiente td { background: #fffbeb; }
+        tr.mp-pendiente td { background: #eff6ff; }
         .btn-complete { background: #f59e0b; color: white; border: none; border-radius: 6px;
             padding: 4px 10px; font-size: 0.75rem; cursor: pointer; font-weight: 600; }
         .btn-complete:hover { background: #d97706; }
@@ -724,6 +725,10 @@
                 <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;white-space:nowrap;cursor:pointer">
                     <input type="checkbox" id="h-flux-pending" onchange="renderHistorial()" style="accent-color:var(--warning)">
                     Solo Flux pendientes
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;white-space:nowrap;cursor:pointer">
+                    <input type="checkbox" id="h-mp-pending" onchange="renderHistorial()" style="accent-color:#2563eb">
+                    Solo MP pendientes
                 </label>
                 <button class="btn btn-sm" style="background:#f59e0b;color:white;border:none;font-weight:600;" onclick="abrirLoteFlux()">⚡ Completar por lote</button>
                 <button class="btn btn-sm" style="background:#2563eb;color:white;border:none;font-weight:600;" onclick="abrirCargaMp()">📥 Cargar MP</button>
@@ -1853,10 +1858,13 @@ function renderHistorial(resetPage = true) {
     const withSaldo = transactions.map(t => { running += t.ingreso - t.egreso; return {...t, saldo: running}; });
 
     const fluxPending = document.getElementById('h-flux-pending')?.checked;
+    const mpPending   = document.getElementById('h-mp-pending')?.checked;
 
     let filtered = withSaldo;
     if (fluxPending) {
         filtered = filtered.filter(t => t.cuenta === 'Flux' && t.pendiente);
+    } else if (mpPending) {
+        filtered = filtered.filter(t => t.cuenta === 'MP FB' && t.pendiente);
     } else {
         if (search) filtered = filtered.filter(t => (t.descripcion||'').toLowerCase().includes(search) || t.categoria.toLowerCase().includes(search));
         if (tipo === 'ingreso') filtered = filtered.filter(t => t.ingreso > 0);
@@ -1887,11 +1895,13 @@ function renderHistorial(resetPage = true) {
     tbody.innerHTML = sorted.length === 0
         ? `<tr class="empty-row"><td colspan="9">Sin resultados</td></tr>`
         : pageRows.map(t => {
-            const isPending = t.pendiente && t.cuenta === 'Flux';
-            return `<tr class="${isPending ? 'flux-pendiente' : ''}">
+            const isPending    = t.pendiente && t.cuenta === 'Flux';
+            const isMpPending  = t.pendiente && t.cuenta === 'MP FB';
+            const rowClass     = isPending ? 'flux-pendiente' : isMpPending ? 'mp-pendiente' : '';
+            return `<tr class="${rowClass}">
             <td>${fmtDate(t.fecha)}</td>
             <td>${t.descripcion||'-'}</td>
-            <td>${t.nroInterno ? `<span class="badge badge-purple">#${t.nroInterno}</span>` : ''}${isPending ? ' <span class="badge badge-orange">PENDIENTE</span>' : ''}</td>
+            <td>${t.nroInterno ? `<span class="badge badge-purple">#${t.nroInterno}</span>` : ''}${isPending ? ' <span class="badge badge-orange">PENDIENTE</span>' : ''}${isMpPending ? ' <span class="badge" style="background:#dbeafe;color:#1d4ed8">PENDIENTE MP</span>' : ''}</td>
             <td><span class="badge badge-gray">${t.categoria}</span></td>
             <td>${t.cuenta}</td>
             <td class="amount-pos">${t.ingreso>0?fmt(t.ingreso):(isPending?'<em style="color:#9ca3af">–</em>':'')}</td>
