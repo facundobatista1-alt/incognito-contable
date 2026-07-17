@@ -2459,10 +2459,12 @@ async function confirmarMpGrupo(fechaLib) {
 async function consultarLiberacionesMp() {
     var statusEl = document.getElementById('dash-mp-cobros-status');
     function setStatus(msg, color) {
-        if (!statusEl) return;
-        statusEl.style.display = 'block';
-        statusEl.style.color = color || '#6b7280';
-        statusEl.textContent = msg;
+        if (statusEl) {
+            statusEl.style.display = 'block';
+            statusEl.style.color = color || '#6b7280';
+            statusEl.textContent = msg;
+        }
+        if (typeof showToast === 'function') showToast(msg);
     }
 
     var apiUrl = getMpReleaseApiUrl();
@@ -2508,6 +2510,13 @@ async function consultarLiberacionesMp() {
         var data = text ? JSON.parse(text) : {};
         if (!res.ok) {
             throw new Error(data.error || data.message || ('Error HTTP ' + res.status));
+        }
+        if (data && data.pending) {
+            setStatus(data.error || 'Mercado Pago todavia esta generando el reporte. Proba de nuevo en un minuto.', '#92400e');
+            return;
+        }
+        if (data && data.success === false) {
+            throw new Error(data.error || data.message || 'Mercado Pago no devolvio liberaciones.');
         }
 
         var rows = normalizeMpReleaseRows(data);
