@@ -732,6 +732,7 @@
                 </label>
                 <button class="btn btn-sm" style="background:#f59e0b;color:white;border:none;font-weight:600;" onclick="abrirLoteFlux()">⚡ Completar por lote</button>
                 <button class="btn btn-sm" style="background:#2563eb;color:white;border:none;font-weight:600;" onclick="abrirCargaMp()">📥 Cargar MP</button>
+                <button class="btn btn-sm" style="background:#1d4ed8;color:white;border:none;font-weight:600;" onclick="consultarLiberacionesMp()">Consultar MP</button>
                 <button class="btn btn-outline btn-sm" onclick="clearHistorialFilters()">Limpiar</button>
                 <button class="btn btn-sm" style="background:#16a34a;color:white;border:none;font-weight:600;" onclick="exportarExcel()">⬇ Excel</button>
             </div>
@@ -824,6 +825,8 @@ const SB_URL  = 'https://hspvuakueakgeffiyjzm.supabase.co';
 const SB_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhzcHZ1YWt1ZWFrZ2VmZml5anptIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0NjI2ODgsImV4cCI6MjA5NDAzODY4OH0.74_AUatbpgaufvciYdMG-gyLlaJ0R4u1orH6rKY6xuo';
 let sb        = null;
 let _sbTimer  = null;
+const MP_RELEASE_API_URL_KEY = 'hc_mp_release_api_url';
+const MP_RELEASE_API_DEFAULT_URL = 'https://incognito-ventas.onrender.com/api/mercadopago/releases';
 
 function parseTxIdMP(descripcion) {
     if (!descripcion) return { desc: '', txId: '' };
@@ -832,6 +835,81 @@ function parseTxIdMP(descripcion) {
         return { desc: parts.slice(0, -1).join(' | '), txId: parts[parts.length - 1] };
     }
     return { desc: descripcion, txId: '' };
+}
+
+function getMpReleaseApiUrl() {
+    return (window.MP_RELEASE_API_URL || localStorage.getItem(MP_RELEASE_API_URL_KEY) || MP_RELEASE_API_DEFAULT_URL || '').trim();
+}
+
+function configurarMpReleaseApiUrl() {
+    var actual = getMpReleaseApiUrl();
+    var url = prompt('Pegá la URL segura para consultar liberaciones de Mercado Pago:', actual);
+    if (url === null) return false;
+    url = url.trim();
+    if (!url) {
+        localStorage.removeItem(MP_RELEASE_API_URL_KEY);
+        showToast('URL de Mercado Pago borrada');
+        return false;
+    }
+    localStorage.setItem(MP_RELEASE_API_URL_KEY, url);
+    showToast('URL de Mercado Pago guardada');
+    return true;
+}
+
+function getMpPaymentId(t) {
+    var parsed = parseTxIdMP(t.descripcion || '');
+    return parsed.txId || '';
+}
+
+function normalizeMpAmount(value) {
+    if (value === null || value === undefined || value === '') return 0;
+    if (typeof value === 'number') return value;
+    var s = String(value).trim();
+    if (!s) return 0;
+    s = s.replace(/\s/g, '').replace(/\$/g, '');
+    if (s.indexOf(',') >= 0 && s.indexOf('.') >= 0) {
+        s = s.replace(/\./g, '').replace(',', '.');
+    } else if (s.indexOf(',') >= 0) {
+        s = s.replace(',', '.');
+    }
+    var n = parseFloat(s);
+    return isNaN(n) ? 0 : n;
+}
+
+function normalizeMpDate(value) {
+    if (!value) return '';
+    var s = String(value);
+    var m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (m) return m[1];
+    return s;
+}
+
+function normalizeMpReleaseRows(payload) {
+    var rows = [];
+    if (!payload) return rows;
+    if (Array.isArray(payload)) rows = payload;
+    else if (Array.isArray(payload.releases)) rows = payload.releases;
+    else if (Array.isArray(payload.results)) rows = payload.results;
+    else if (payload.bySourceId && typeof payload.bySourceId === 'object') {
+        Object.keys(payload.bySourceId).forEach(function(k) {
+            var item = payload.bySourceId[k];
+            if (item && typeof item === 'object') item.SOURCE_ID = item.SOURCE_ID || k;
+            rows.push(item);
+        });
+    }
+
+    return rows.map(function(r) {
+        r = r || {};
+        return {
+            sourceId: String(r.SOURCE_ID || r.sourceId || r.source_id || r.paymentId || r.payment_id || '').trim(),
+            recordType: String(r.RECORD_TYPE || r.recordType || r.record_type || '').trim().toLowerCase(),
+            description: String(r.DESCRIPTION || r.description || '').trim().toLowerCase(),
+            amount: normalizeMpAmount(r.NET_CREDIT_AMOUNT || r.netCreditAmount || r.net_credit_amount || r.amount),
+            date: normalizeMpDate(r.DATE || r.date || r.releaseDate || r.release_date)
+        };
+    }).filter(function(r) {
+        return r.sourceId && r.amount > 0 && (!r.recordType || r.recordType === 'release') && (!r.description || r.description === 'payment' || r.description.indexOf('payment') >= 0);
+    });
 }
 
 function sbRow(t) {
@@ -2378,6 +2456,102 @@ async function confirmarMpGrupo(fechaLib) {
     showToast(grupo.length + ' cobros MP confirmados — ' + fmtSigned(total));
 }
 
+async function consultarLiberacionesMp() {
+    var statusEl = document.getElementById('dash-mp-cobros-status');
+    function setStatus(msg, color) {
+        if (!statusEl) return;
+        statusEl.style.display = 'block';
+        statusEl.style.color = color || '#6b7280';
+        statusEl.textContent = msg;
+    }
+
+    var apiUrl = getMpReleaseApiUrl();
+    if (!apiUrl) {
+        if (!configurarMpReleaseApiUrl()) {
+            alert('Para consultar Mercado Pago falta configurar una URL segura. El token de MP no debe estar en este HTML.');
+            return;
+        }
+        apiUrl = getMpReleaseApiUrl();
+    }
+
+    var pending = transactions.filter(function(t){
+        return t.cuenta === 'MP FB' && t.pendiente && getMpPaymentId(t);
+    });
+    if (!pending.length) {
+        alert('No hay pedidos MP pendientes con ID de pago.');
+        return;
+    }
+
+    var ids = pending.map(function(t){ return getMpPaymentId(t); });
+    var dates = pending.map(function(t){ return t.fecha; }).sort();
+    var today = new Date().toISOString().split('T')[0];
+    var payload = {
+        paymentIds: ids,
+        from: dates[0],
+        to: today,
+        account: 'MP FB'
+    };
+
+    setStatus('Consultando liberaciones de Mercado Pago...', '#2563eb');
+    try {
+        var headers = { 'Content-Type': 'application/json' };
+        if (apiUrl.indexOf(SB_URL) === 0) {
+            headers.apikey = SB_KEY;
+            headers.Authorization = 'Bearer ' + SB_KEY;
+        }
+        var res = await fetch(apiUrl, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(payload)
+        });
+        var text = await res.text();
+        var data = text ? JSON.parse(text) : {};
+        if (!res.ok) {
+            throw new Error(data.error || data.message || ('Error HTTP ' + res.status));
+        }
+
+        var rows = normalizeMpReleaseRows(data);
+        var byId = {};
+        rows.forEach(function(r) {
+            if (!byId[r.sourceId]) byId[r.sourceId] = r;
+        });
+
+        var completadas = [];
+        var noLiberadas = [];
+        pending.forEach(function(t) {
+            var paymentId = getMpPaymentId(t);
+            var release = byId[paymentId];
+            if (release && release.amount > 0) {
+                t.ingreso = release.amount;
+                t.pendiente = false;
+                completadas.push({ tx: t, release: release });
+            } else {
+                noLiberadas.push(t);
+            }
+        });
+
+        if (completadas.length) {
+            localStorage.setItem('hc_tx', JSON.stringify(transactions));
+            if (sb) {
+                var rowsToSave = completadas.map(function(item){ return sbRow(item.tx); });
+                await sb.from('transactions').upsert(rowsToSave);
+            }
+            renderAll();
+        }
+
+        var total = completadas.reduce(function(s,item){ return s + item.tx.ingreso; }, 0);
+        if (completadas.length) {
+            setStatus('Listo: ' + completadas.length + ' pedidos completados por ' + fmtSigned(total) + '. ' + noLiberadas.length + ' siguen pendientes.', '#15803d');
+            showToast(completadas.length + ' pedidos MP completados');
+        } else {
+            setStatus('Mercado Pago respondió, pero todavía no hay liberaciones para estos pedidos.', '#92400e');
+        }
+    } catch(e) {
+        setStatus('No se pudo consultar Mercado Pago: ' + (e.message || e), '#dc2626');
+        alert('No se pudo consultar Mercado Pago: ' + (e.message || e));
+    }
+}
+
 function renderMpCobros() {
     var el = document.getElementById('dash-mp-cobros');
     if (!el) return;
@@ -2447,6 +2621,11 @@ function renderMpCobros() {
     el.style.display = 'block';
     el.innerHTML = '<div style="background:white;border-radius:12px;padding:16px;border:1px solid #e5e7eb;margin-bottom:4px">'
         + '<div style="font-weight:700;font-size:.95rem;color:#1e3a5f;margin-bottom:10px">📥 Próximos cobros MP (' + pending.length + ')</div>'
+        + '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:-2px 0 10px">'
+        + '<button onclick="consultarLiberacionesMp()" style="font-size:.78rem;background:#2563eb;color:white;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;font-weight:600">Consultar liberaciones MP</button>'
+        + '<button onclick="configurarMpReleaseApiUrl()" title="Configurar URL segura de Mercado Pago" style="font-size:.78rem;background:white;color:#374151;border:1px solid #d1d5db;border-radius:6px;padding:5px 8px;cursor:pointer">Configurar</button>'
+        + '</div>'
+        + '<div id="dash-mp-cobros-status" style="display:none;font-size:.82rem;margin:-2px 0 10px;color:#6b7280"></div>'
         + rows.join('')
         + '</div>';
 }
