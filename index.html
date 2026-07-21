@@ -1964,13 +1964,24 @@ function renderHistorial(resetPage = true) {
     } else if (mpPending) {
         filtered = filtered.filter(t => t.cuenta === 'MP FB' && t.pendiente);
     } else {
-        if (search) filtered = filtered.filter(t => (t.descripcion||'').toLowerCase().includes(search) || t.categoria.toLowerCase().includes(search));
+        if (search) filtered = filtered.filter(function(t) {
+            var parsed = parseTxIdMP(t.descripcion || '');
+            return (t.descripcion || '').toLowerCase().includes(search)
+                || (parsed.desc || '').toLowerCase().includes(search)
+                || (parsed.txId || '').toLowerCase().includes(search)
+                || (t.nroInterno || '').toLowerCase().includes(search)
+                || (t.categoria || '').toLowerCase().includes(search);
+        });
         if (tipo === 'ingreso') filtered = filtered.filter(t => t.ingreso > 0);
         if (tipo === 'egreso')  filtered = filtered.filter(t => t.egreso > 0);
         if (cuenta) filtered = filtered.filter(t => t.cuenta === cuenta);
         if (cat)    filtered = filtered.filter(t => t.categoria === cat);
         if (mes)    filtered = filtered.filter(t => t.fecha.startsWith(mes));
-        if (nro)    filtered = filtered.filter(t => (t.nroInterno||'').toLowerCase().includes(nro));
+        if (nro)    filtered = filtered.filter(function(t) {
+            var parsed = parseTxIdMP(t.descripcion || '');
+            return (t.nroInterno || '').toLowerCase().includes(nro)
+                || (parsed.txId || '').toLowerCase().includes(nro);
+        });
     }
 
     // Sort full set
