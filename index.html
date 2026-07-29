@@ -733,6 +733,7 @@
                 <button class="btn btn-sm" style="background:#f59e0b;color:white;border:none;font-weight:600;" onclick="abrirLoteFlux()">⚡ Completar por lote</button>
                 <button class="btn btn-sm" style="background:#2563eb;color:white;border:none;font-weight:600;" onclick="abrirCargaMp()">📥 Cargar MP</button>
                 <button class="btn btn-sm" style="background:#1d4ed8;color:white;border:none;font-weight:600;" onclick="consultarLiberacionesMp()">Consultar MP</button>
+                <button class="btn btn-sm" style="background:#0f766e;color:white;border:none;font-weight:600;" onclick="abrirMovimientosMp()">Movimientos MP</button>
                 <button class="btn btn-outline btn-sm" onclick="clearHistorialFilters()">Limpiar</button>
                 <button class="btn btn-sm" style="background:#16a34a;color:white;border:none;font-weight:600;" onclick="exportarExcel()">⬇ Excel</button>
             </div>
@@ -827,6 +828,7 @@ let sb        = null;
 let _sbTimer  = null;
 const MP_RELEASE_API_URL_KEY = 'hc_mp_release_api_url';
 const MP_RELEASE_API_DEFAULT_URL = 'https://incognito-ventas.onrender.com/api/mercadopago/releases';
+const MP_ACCOUNT_MOVEMENTS_API_DEFAULT_URL = 'https://incognito-ventas.onrender.com/api/mercadopago/account-movements';
 
 function parseTxIdMP(descripcion) {
     if (!descripcion) return { desc: '', txId: '' };
@@ -839,6 +841,16 @@ function parseTxIdMP(descripcion) {
 
 function getMpReleaseApiUrl() {
     return (window.MP_RELEASE_API_URL || localStorage.getItem(MP_RELEASE_API_URL_KEY) || MP_RELEASE_API_DEFAULT_URL || '').trim();
+}
+
+function getMpAccountMovementsApiUrl() {
+    var custom = (window.MP_ACCOUNT_MOVEMENTS_API_URL || '').trim();
+    if (custom) return custom;
+    var releaseUrl = getMpReleaseApiUrl();
+    if (releaseUrl.indexOf('/api/mercadopago/releases') >= 0) {
+        return releaseUrl.replace('/api/mercadopago/releases', '/api/mercadopago/account-movements');
+    }
+    return MP_ACCOUNT_MOVEMENTS_API_DEFAULT_URL;
 }
 
 function configurarMpReleaseApiUrl() {
@@ -2435,6 +2447,200 @@ async function confirmarCargaMp() {
 // MP FB — COBROS A 10 DÍAS
 // ══════════════════════════════════════════════════════
 
+// Mercado Pago: otros movimientos de cuenta
+var _mpMovimientosItems = [];
+
+function getTodayISO() {
+    return new Date().toISOString().split('T')[0];
+}
+
+function abrirMovimientosMp() {
+    var today = getTodayISO();
+    var hasta = addDays(today, -1);
+    var desde = addDays(hasta, -20);
+    document.getElementById('mp-mov-desde').value = desde;
+    document.getElementById('mp-mov-hasta').value = hasta;
+    document.getElementById('mp-mov-status').textContent = '';
+    document.getElementById('mp-mov-preview').innerHTML = '';
+    document.getElementById('mp-mov-confirm-wrap').style.display = 'none';
+    _mpMovimientosItems = [];
+    document.getElementById('mp-mov-modal').classList.add('open');
+}
+
+function cerrarMovimientosMp() {
+    document.getElementById('mp-mov-modal').classList.remove('open');
+    _mpMovimientosItems = [];
+}
+
+function mpMovMarker(m) {
+    return 'MPMOV ' + String(m.transactionType || '').toUpperCase() + ' | ' + String(m.sourceId || '');
+}
+
+function mpMovimientoExiste(m) {
+    var marker = mpMovMarker(m);
+    return transactions.some(function(t){ return String(t.descripcion || '').indexOf(marker) >= 0; });
+}
+
+function descripcionMpMovimiento(m) {
+    var desc = String(m.descripcion || 'Movimiento Mercado Pago').trim();
+    var sourceId = String(m.sourceId || '').trim();
+    if (!sourceId) return desc;
+    if (desc.indexOf(sourceId) >= 0) return desc.replace(sourceId, mpMovMarker(m));
+    return desc + ' | ' + mpMovMarker(m);
+}
+
+function normalizeMpMovementRows(data) {
+    var rows = (data && (data.movements || data.rows || data.items)) || [];
+    if (!Array.isArray(rows)) return [];
+    return rows.map(function(r) {
+        var amount = normalizeMpAmount(r.amount || r.realAmount || r.REAL_AMOUNT);
+        var ingreso = normalizeMpAmount(r.ingreso);
+        var egreso = normalizeMpAmount(r.egreso);
+        if (!ingreso && !egreso) {
+            ingreso = amount > 0 ? amount : 0;
+            egreso = amount < 0 ? Math.abs(amount) : 0;
+        }
+        return {
+            sourceId: String(r.sourceId || r.SOURCE_ID || '').trim(),
+            transactionType: String(r.transactionType || r.TRANSACTION_TYPE || '').trim().toUpperCase(),
+            fecha: normalizeMpDate(r.date || r.fecha || r.SETTLEMENT_DATE || r.TRANSACTION_DATE),
+            cuenta: r.cuenta || 'MP FB',
+            categoria: r.categoria || 'Otros',
+            descripcion: r.descripcion || r.description || '',
+            ingreso: ingreso,
+            egreso: egreso,
+            raw: r.raw || {}
+        };
+    }).filter(function(r) {
+        return r.fecha && (r.ingreso > 0 || r.egreso > 0) && r.transactionType !== 'SETTLEMENT';
+    });
+}
+
+async function consultarMovimientosMp() {
+    var status = document.getElementById('mp-mov-status');
+    var preview = document.getElementById('mp-mov-preview');
+    var confirmWrap = document.getElementById('mp-mov-confirm-wrap');
+    var desde = document.getElementById('mp-mov-desde').value;
+    var hasta = document.getElementById('mp-mov-hasta').value;
+    var apiUrl = getMpAccountMovementsApiUrl();
+    if (!desde || !hasta || desde > hasta) {
+        alert('Elegi un rango de fechas valido.');
+        return;
+    }
+    status.style.color = '#2563eb';
+    status.textContent = 'Consultando movimientos de Mercado Pago...';
+    preview.innerHTML = '';
+    confirmWrap.style.display = 'none';
+    _mpMovimientosItems = [];
+
+    try {
+        var headers = { 'Content-Type': 'application/json' };
+        if (apiUrl.indexOf(SB_URL) === 0) {
+            headers.apikey = SB_KEY;
+            headers.Authorization = 'Bearer ' + SB_KEY;
+        }
+        var res = await fetch(apiUrl, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({ from: desde, to: hasta, includeSales: false })
+        });
+        var text = await res.text();
+        var data = text ? JSON.parse(text) : {};
+        if (!res.ok) throw new Error(data.error || data.message || ('Error HTTP ' + res.status));
+        if (data && data.pending) {
+            status.style.color = '#92400e';
+            status.textContent = data.error || 'Mercado Pago esta generando el reporte. Proba de nuevo en un minuto.';
+            return;
+        }
+        if (data && data.success === false) throw new Error(data.error || data.message || 'Mercado Pago no devolvio movimientos.');
+
+        var rows = normalizeMpMovementRows(data);
+        rows.forEach(function(m){ m.existe = mpMovimientoExiste(m); m.descripcionFinal = descripcionMpMovimiento(m); });
+        _mpMovimientosItems = rows;
+        renderPreviewMovimientosMp();
+        var nuevos = rows.filter(function(m){ return !m.existe; }).length;
+        status.style.color = nuevos ? '#15803d' : '#92400e';
+        status.textContent = nuevos
+            ? 'Encontre ' + nuevos + ' movimiento(s) nuevos para revisar.'
+            : 'No encontre movimientos nuevos en ese rango.';
+    } catch(e) {
+        status.style.color = '#dc2626';
+        status.textContent = 'No se pudo consultar Mercado Pago: ' + (e.message || e);
+        alert(status.textContent);
+    }
+}
+
+function renderPreviewMovimientosMp() {
+    var preview = document.getElementById('mp-mov-preview');
+    var confirmWrap = document.getElementById('mp-mov-confirm-wrap');
+    if (!_mpMovimientosItems.length) {
+        preview.innerHTML = '<p style="font-size:.85rem;color:#6b7280">Sin movimientos para mostrar.</p>';
+        confirmWrap.style.display = 'none';
+        return;
+    }
+    var rows = _mpMovimientosItems.map(function(m, idx) {
+        var monto = m.ingreso > 0 ? fmtSigned(m.ingreso) : '-' + fmt(m.egreso);
+        var color = m.ingreso > 0 ? '#15803d' : '#dc2626';
+        var checked = !m.existe ? ' checked' : '';
+        var disabled = m.existe ? ' disabled' : '';
+        var estado = m.existe ? '<span style="color:#9ca3af;font-size:.78rem">ya cargado</span>' : '<span style="color:#15803d;font-size:.78rem">nuevo</span>';
+        return '<tr style="border-bottom:1px solid #f3f4f6">'
+            + '<td style="padding:6px 8px;text-align:center"><input type="checkbox" class="mp-mov-check" data-idx="' + idx + '"' + checked + disabled + '></td>'
+            + '<td style="padding:6px 8px;white-space:nowrap">' + fmtDate(m.fecha) + '</td>'
+            + '<td style="padding:6px 8px"><div style="font-weight:600;color:#374151">' + (m.descripcionFinal || m.descripcion || '') + '</div><div style="font-family:monospace;color:#9ca3af;font-size:.75rem">' + (m.transactionType || '') + '</div></td>'
+            + '<td style="padding:6px 8px"><span class="badge badge-gray">' + (m.categoria || 'Otros') + '</span></td>'
+            + '<td style="padding:6px 8px;text-align:right;font-weight:700;color:' + color + '">' + monto + '</td>'
+            + '<td style="padding:6px 8px;text-align:right">' + estado + '</td>'
+            + '</tr>';
+    }).join('');
+    preview.innerHTML = '<div style="max-height:360px;overflow:auto;border:1px solid #e5e7eb;border-radius:8px">'
+        + '<table style="width:100%;border-collapse:collapse;font-size:.84rem">'
+        + '<thead><tr style="border-bottom:1px solid #e5e7eb;background:#f9fafb">'
+        + '<th style="padding:6px 8px;width:34px"></th>'
+        + '<th style="text-align:left;padding:6px 8px">Fecha</th>'
+        + '<th style="text-align:left;padding:6px 8px">Descripcion</th>'
+        + '<th style="text-align:left;padding:6px 8px">Categoria</th>'
+        + '<th style="text-align:right;padding:6px 8px">Monto</th>'
+        + '<th style="text-align:right;padding:6px 8px">Estado</th>'
+        + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    confirmWrap.style.display = _mpMovimientosItems.some(function(m){ return !m.existe; }) ? 'block' : 'none';
+}
+
+async function cargarMovimientosMpSeleccionados() {
+    var checks = Array.from(document.querySelectorAll('.mp-mov-check:checked'));
+    var elegidos = checks.map(function(ch){ return _mpMovimientosItems[parseInt(ch.dataset.idx, 10)]; })
+        .filter(function(m){ return m && !m.existe; });
+    if (!elegidos.length) {
+        alert('No hay movimientos seleccionados para cargar.');
+        return;
+    }
+    var nuevas = elegidos.map(function(m) {
+        return {
+            id: uid(),
+            fecha: m.fecha,
+            categoria: m.categoria || 'Otros',
+            cuenta: m.cuenta || 'MP FB',
+            descripcion: m.descripcionFinal || descripcionMpMovimiento(m),
+            nroInterno: '',
+            ingreso: m.ingreso || 0,
+            egreso: m.egreso || 0,
+            pendiente: false
+        };
+    });
+    nuevas.forEach(function(t){ transactions.push(t); });
+    transactions.sort(function(a,b){ return a.fecha.localeCompare(b.fecha); });
+    localStorage.setItem('hc_tx', JSON.stringify(transactions));
+    if (sb) {
+        var CHUNK = 100;
+        for (var i = 0; i < nuevas.length; i += CHUNK) {
+            await sb.from('transactions').upsert(nuevas.slice(i, i + CHUNK).map(sbRow));
+        }
+    }
+    cerrarMovimientosMp();
+    renderAll();
+    showToast(nuevas.length + ' movimiento(s) MP cargados');
+}
+
 async function confirmMpPago(id) {
     var t = transactions.find(function(x){ return x.id === id; });
     if (!t) return;
@@ -2670,6 +2876,33 @@ function renderMpCobros() {
             <div id="carga-mp-preview" style="margin-top:12px"></div>
             <div id="carga-mp-confirm-wrap" style="display:none;margin-top:10px">
                 <button class="btn btn-primary" id="carga-mp-confirm-btn" onclick="confirmarCargaMp()">✓ Cargar todas</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MOVIMIENTOS MP MODAL -->
+    <div class="modal-overlay" id="mp-mov-modal" onclick="if(event.target===this)cerrarMovimientosMp()" style="z-index:300">
+        <div class="modal-box" style="max-width:860px">
+            <h3>Movimientos Mercado Pago</h3>
+            <p style="font-size:.85rem;color:#6b7280;margin-bottom:12px">
+                Revisa envios, retiros, devoluciones y otros movimientos de cuenta antes de cargarlos al historial.
+            </p>
+            <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px">
+                <div class="form-group" style="margin-bottom:0">
+                    <label>Desde</label>
+                    <input type="date" id="mp-mov-desde">
+                </div>
+                <div class="form-group" style="margin-bottom:0">
+                    <label>Hasta</label>
+                    <input type="date" id="mp-mov-hasta">
+                </div>
+                <button class="btn btn-primary" onclick="consultarMovimientosMp()">Buscar movimientos</button>
+                <button class="btn btn-outline" onclick="cerrarMovimientosMp()">Cancelar</button>
+            </div>
+            <div id="mp-mov-status" style="font-size:.84rem;color:#6b7280;margin-bottom:10px;min-height:18px"></div>
+            <div id="mp-mov-preview"></div>
+            <div id="mp-mov-confirm-wrap" style="display:none;margin-top:12px;text-align:right">
+                <button class="btn btn-sm" style="background:#0f766e;color:white;border:none;font-weight:600" onclick="cargarMovimientosMpSeleccionados()">Cargar seleccionados</button>
             </div>
         </div>
     </div>
