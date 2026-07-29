@@ -2543,7 +2543,7 @@ async function consultarMovimientosMp() {
         var res = await fetch(apiUrl, {
             method: 'POST',
             headers: headers,
-            body: JSON.stringify({ from: desde, to: hasta, includeSales: false, forceFresh: true })
+            body: JSON.stringify({ from: desde, to: hasta, includeSales: false })
         });
         var text = await res.text();
         var data = text ? JSON.parse(text) : {};
