@@ -2509,10 +2509,11 @@ function normalizeMpMovementRows(data) {
             descripcion: r.descripcion || r.description || '',
             ingreso: ingreso,
             egreso: egreso,
+            isSale: !!r.isSale,
             raw: r.raw || {}
         };
     }).filter(function(r) {
-        return r.fecha && (r.ingreso > 0 || r.egreso > 0) && r.transactionType !== 'SETTLEMENT';
+        return r.fecha && (r.ingreso > 0 || r.egreso > 0) && !r.isSale;
     });
 }
 
