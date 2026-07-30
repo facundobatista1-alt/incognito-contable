@@ -2489,6 +2489,47 @@ function descripcionMpMovimiento(m) {
     return desc + ' | ' + mpMovMarker(m);
 }
 
+function escapeHtml(value) {
+    return String(value || '').replace(/[&<>"']/g, function(ch) {
+        return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[ch];
+    });
+}
+
+function stripMpMarkerText(value) {
+    return String(value || '')
+        .replace(/\s*\|\s*MPMOV\s+[A-Z_]+\s*\|\s*\d+\s*$/i, '')
+        .replace(/\s*\|\s*\d{8,}\s*$/i, '')
+        .trim();
+}
+
+function applyMpMovementUiRules(m) {
+    var desc = stripMpMarkerText(m.descripcion || m.description || '');
+    var text = (desc + ' ' + (m.transactionType || '')).toLowerCase();
+    if (text.indexOf('mi correo') >= 0 || text.indexOf('micorreo') >= 0) {
+        m.descripcionEditable = 'Correo Argentino';
+        m.categoria = 'Envíos';
+    } else if (text.indexOf('envio mercado pago') >= 0 && text.indexOf('paquetes') >= 0) {
+        m.descripcionEditable = 'Andreani';
+        m.categoria = 'Envíos';
+    } else if (text.indexOf('credito mercado pago') >= 0) {
+        m.descripcionEditable = 'Rendimientos';
+    } else if (text.indexOf('retiro mercado pago') >= 0 || String(m.transactionType || '').toUpperCase().indexOf('PAYOUT') >= 0) {
+        m.descripcionEditable = 'Retiro Mercado Pago';
+        m.categoria = 'Productos';
+    } else {
+        m.descripcionEditable = desc || 'Movimiento Mercado Pago';
+    }
+    return m;
+}
+
+function mpCategorySelectHtml(idx, selected) {
+    var cats = ALL_CATS.slice();
+    if (selected && cats.indexOf(selected) < 0) cats.push(selected);
+    return '<select class="mp-mov-cat" data-idx="' + idx + '" style="width:130px;border:1px solid #d1d5db;border-radius:6px;padding:5px 7px;font-size:.82rem;background:white">'
+        + cats.map(function(c){ return '<option value="' + escapeHtml(c) + '"' + (c === selected ? ' selected' : '') + '>' + escapeHtml(c) + '</option>'; }).join('')
+        + '</select>';
+}
+
 function normalizeMpMovementRows(data) {
     var rows = (data && (data.movements || data.rows || data.items)) || [];
     if (!Array.isArray(rows)) return [];
@@ -2500,7 +2541,7 @@ function normalizeMpMovementRows(data) {
             ingreso = amount > 0 ? amount : 0;
             egreso = amount < 0 ? Math.abs(amount) : 0;
         }
-        return {
+        return applyMpMovementUiRules({
             sourceId: String(r.sourceId || r.SOURCE_ID || '').trim(),
             transactionType: String(r.transactionType || r.TRANSACTION_TYPE || '').trim().toUpperCase(),
             fecha: normalizeMpDate(r.date || r.fecha || r.SETTLEMENT_DATE || r.TRANSACTION_DATE),
@@ -2511,7 +2552,7 @@ function normalizeMpMovementRows(data) {
             egreso: egreso,
             isSale: !!r.isSale,
             raw: r.raw || {}
-        };
+        });
     }).filter(function(r) {
         return r.fecha && (r.ingreso > 0 || r.egreso > 0) && !r.isSale;
     });
@@ -2585,11 +2626,12 @@ function renderPreviewMovimientosMp() {
         var checked = !m.existe ? ' checked' : '';
         var disabled = m.existe ? ' disabled' : '';
         var estado = m.existe ? '<span style="color:#9ca3af;font-size:.78rem">ya cargado</span>' : '<span style="color:#15803d;font-size:.78rem">nuevo</span>';
+        var editDisabled = m.existe ? ' disabled' : '';
         return '<tr style="border-bottom:1px solid #f3f4f6">'
             + '<td style="padding:6px 8px;text-align:center"><input type="checkbox" class="mp-mov-check" data-idx="' + idx + '"' + checked + disabled + '></td>'
             + '<td style="padding:6px 8px;white-space:nowrap">' + fmtDate(m.fecha) + '</td>'
-            + '<td style="padding:6px 8px"><div style="font-weight:600;color:#374151">' + (m.descripcionFinal || m.descripcion || '') + '</div><div style="font-family:monospace;color:#9ca3af;font-size:.75rem">' + (m.transactionType || '') + '</div></td>'
-            + '<td style="padding:6px 8px"><span class="badge badge-gray">' + (m.categoria || 'Otros') + '</span></td>'
+            + '<td style="padding:6px 8px"><input class="mp-mov-desc" data-idx="' + idx + '" value="' + escapeHtml(m.descripcionEditable || stripMpMarkerText(m.descripcionFinal || m.descripcion || '')) + '"' + editDisabled + ' style="width:100%;min-width:220px;border:1px solid #d1d5db;border-radius:6px;padding:5px 7px;font-size:.84rem;color:#374151"><div style="font-family:monospace;color:#9ca3af;font-size:.75rem;margin-top:2px">' + (m.transactionType || '') + '</div></td>'
+            + '<td style="padding:6px 8px">' + mpCategorySelectHtml(idx, m.categoria || 'Otros') + '</td>'
             + '<td style="padding:6px 8px;text-align:right;font-weight:700;color:' + color + '">' + monto + '</td>'
             + '<td style="padding:6px 8px;text-align:right">' + estado + '</td>'
             + '</tr>';
@@ -2608,6 +2650,14 @@ function renderPreviewMovimientosMp() {
 }
 
 async function cargarMovimientosMpSeleccionados() {
+    Array.from(document.querySelectorAll('.mp-mov-desc')).forEach(function(input) {
+        var idx = parseInt(input.dataset.idx, 10);
+        if (_mpMovimientosItems[idx]) _mpMovimientosItems[idx].descripcionEditable = input.value.trim();
+    });
+    Array.from(document.querySelectorAll('.mp-mov-cat')).forEach(function(sel) {
+        var idx = parseInt(sel.dataset.idx, 10);
+        if (_mpMovimientosItems[idx]) _mpMovimientosItems[idx].categoria = sel.value;
+    });
     var checks = Array.from(document.querySelectorAll('.mp-mov-check:checked'));
     var elegidos = checks.map(function(ch){ return _mpMovimientosItems[parseInt(ch.dataset.idx, 10)]; })
         .filter(function(m){ return m && !m.existe; });
@@ -2621,7 +2671,7 @@ async function cargarMovimientosMpSeleccionados() {
             fecha: m.fecha,
             categoria: m.categoria || 'Otros',
             cuenta: m.cuenta || 'MP FB',
-            descripcion: m.descripcionFinal || descripcionMpMovimiento(m),
+            descripcion: (m.descripcionEditable || stripMpMarkerText(m.descripcionFinal || m.descripcion || 'Movimiento Mercado Pago')) + ' | ' + mpMovMarker(m),
             nroInterno: '',
             ingreso: m.ingreso || 0,
             egreso: m.egreso || 0,
