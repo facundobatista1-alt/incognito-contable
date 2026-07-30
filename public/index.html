@@ -829,6 +829,7 @@ let _sbTimer  = null;
 const MP_RELEASE_API_URL_KEY = 'hc_mp_release_api_url';
 const MP_RELEASE_API_DEFAULT_URL = 'https://incognito-ventas.onrender.com/api/mercadopago/releases';
 const MP_ACCOUNT_MOVEMENTS_API_DEFAULT_URL = 'https://incognito-ventas.onrender.com/api/mercadopago/account-movements';
+const MP_UNRELEASED_BALANCE_API_DEFAULT_URL = 'https://incognito-ventas.onrender.com/api/mercadopago/unreleased-balance';
 
 function parseTxIdMP(descripcion) {
     if (!descripcion) return { desc: '', txId: '' };
@@ -851,6 +852,16 @@ function getMpAccountMovementsApiUrl() {
         return releaseUrl.replace('/api/mercadopago/releases', '/api/mercadopago/account-movements');
     }
     return MP_ACCOUNT_MOVEMENTS_API_DEFAULT_URL;
+}
+
+function getMpUnreleasedBalanceApiUrl() {
+    var custom = (window.MP_UNRELEASED_BALANCE_API_URL || '').trim();
+    if (custom) return custom;
+    var releaseUrl = getMpReleaseApiUrl();
+    if (releaseUrl.indexOf('/api/mercadopago/releases') >= 0) {
+        return releaseUrl.replace('/api/mercadopago/releases', '/api/mercadopago/unreleased-balance');
+    }
+    return MP_UNRELEASED_BALANCE_API_DEFAULT_URL;
 }
 
 function configurarMpReleaseApiUrl() {
@@ -1694,6 +1705,7 @@ function renderDashboard() {
             kpiHtml += '<div class="kpi-card"><div class="kpi-label">Mejor mes</div><div class="kpi-value gray">' + bestMonth[0] + '</div><div class="kpi-sub">' + fmt(bestMonth[1]) + '</div></div>';
         }
         document.getElementById('dash-kpis').innerHTML = kpiHtml;
+        refreshMpUnreleasedBalance(false);
     })();
 
         // Account balances — frozen at end of selected period
@@ -2332,10 +2344,16 @@ function getMpKpiHtml() {
     var mpP = transactions.filter(function(t){ return t.cuenta === 'MP FB' && t.pendiente; });
     if (!mpP.length) return '';
     var mpM = mpP.reduce(function(s,t){ return s + t.ingreso; }, 0);
+    var mpSub = '<span id="mp-unreleased-kpi-sub">Consultando MP...</span>';
+    if (_mpUnreleasedBalance && _mpUnreleasedBalance.ok) {
+        mpSub = '<span id="mp-unreleased-kpi-sub">' + fmt(_mpUnreleasedBalance.total) + ' por liberar en MP</span>';
+    } else if (_mpUnreleasedBalance && _mpUnreleasedBalance.error) {
+        mpSub = '<span id="mp-unreleased-kpi-sub">' + (mpM > 0 ? fmt(mpM) + ' est. local' : 'sin monto local') + '</span>';
+    }
     return '<div class="kpi-card" style="border-color:#3b82f6">'
         + '<div class="kpi-label" style="color:#1d4ed8">MP por cobrar</div>'
         + '<div class="kpi-value" style="color:#2563eb">' + mpP.length + '</div>'
-        + '<div class="kpi-sub">' + fmt(mpM) + '</div>'
+        + '<div class="kpi-sub">' + mpSub + '</div>'
         + '</div>';
 }
 
@@ -2343,6 +2361,65 @@ function getMpKpiHtml() {
 // ══════════════════════════════════════════════════════
 // CARGA MP POR LOTE
 // ══════════════════════════════════════════════════════
+var _mpUnreleasedBalance = null;
+var _mpUnreleasedLoading = false;
+
+function updateMpUnreleasedKpiSub() {
+    var el = document.getElementById('mp-unreleased-kpi-sub');
+    if (!el) return;
+    var mpP = transactions.filter(function(t){ return t.cuenta === 'MP FB' && t.pendiente; });
+    var mpM = mpP.reduce(function(s,t){ return s + t.ingreso; }, 0);
+    if (_mpUnreleasedBalance && _mpUnreleasedBalance.ok) {
+        el.textContent = fmt(_mpUnreleasedBalance.total) + ' por liberar en MP';
+    } else if (_mpUnreleasedBalance && _mpUnreleasedBalance.error) {
+        el.textContent = mpM > 0 ? fmt(mpM) + ' est. local' : 'sin monto local';
+    } else {
+        el.textContent = 'Consultando MP...';
+    }
+}
+
+async function refreshMpUnreleasedBalance(force) {
+    var mpP = transactions.filter(function(t){ return t.cuenta === 'MP FB' && t.pendiente; });
+    if (!mpP.length && !force) return;
+    var now = Date.now();
+    if (!force && _mpUnreleasedBalance && _mpUnreleasedBalance.ts && now - _mpUnreleasedBalance.ts < 5 * 60 * 1000) {
+        updateMpUnreleasedKpiSub();
+        return;
+    }
+    if (_mpUnreleasedLoading) return;
+    _mpUnreleasedLoading = true;
+    updateMpUnreleasedKpiSub();
+    try {
+        var apiUrl = getMpUnreleasedBalanceApiUrl();
+        var headers = { 'Content-Type': 'application/json' };
+        if (apiUrl.indexOf(SB_URL) === 0) {
+            headers.apikey = SB_KEY;
+            headers.Authorization = 'Bearer ' + SB_KEY;
+        }
+        var today = new Date().toISOString().split('T')[0];
+        var res = await fetch(apiUrl, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({ to: today })
+        });
+        var text = await res.text();
+        var data = text ? JSON.parse(text) : {};
+        if (!res.ok || data.success === false) throw new Error(data.error || data.message || ('Error HTTP ' + res.status));
+        _mpUnreleasedBalance = {
+            ok: true,
+            total: normalizeMpAmount(data.total),
+            count: parseInt(data.count || 0, 10),
+            ts: Date.now()
+        };
+    } catch(e) {
+        console.warn('MP unreleased balance error:', e);
+        _mpUnreleasedBalance = { ok: false, error: true, ts: Date.now() };
+    } finally {
+        _mpUnreleasedLoading = false;
+        updateMpUnreleasedKpiSub();
+    }
+}
+
 var _mpLoteItems = [];
 
 function abrirCargaMp() {
