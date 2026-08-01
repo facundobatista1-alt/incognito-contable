@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hoja Contable â€” Incognito</title>
+    <title>Hoja Contable - Incognito</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
@@ -323,23 +323,23 @@
 </head>
 <body>
 <div id="sb-loading" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center;flex-direction:column;color:#fff;font-family:sans-serif;">
-    <div style="font-size:2rem;margin-bottom:.5rem;">â˜ï¸</div>
-    <div style="font-size:1rem;letter-spacing:.05em;">Sincronizando con la nubeâ€¦</div>
+    <div style="font-size:1.4rem;font-weight:700;margin-bottom:.5rem;">Nube</div>
+    <div style="font-size:1rem;letter-spacing:.05em;">Sincronizando con la nube...</div>
 </div>
 
     <!-- LOCK SCREEN -->
     <div id="lock-screen">
         <div class="lock-box">
-            <div class="lock-logo">ðŸ”’</div>
+            <div class="lock-logo">INC</div>
             <h2>Hoja Contable</h2>
-            <p>Incognito Â· Acceso restringido</p>
+            <p>Incognito - Acceso restringido</p>
             <input class="lock-input" type="password" id="lock-input"
-                placeholder="ContraseÃ±a"
+                placeholder="Contrasena"
                 onkeydown="if(event.key==='Enter')unlock()">
             <button class="lock-btn" onclick="unlock()">Ingresar</button>
             <div class="lock-error" id="lock-error"></div>
             <div id="migrate-section" style="margin-top:1.2rem;border-top:1px solid rgba(255,255,255,.15);padding-top:1rem;">
-                <button onclick="migrarDatos()" style="background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.3);padding:.5rem 1.2rem;border-radius:8px;cursor:pointer;font-size:.82rem;width:100%;">â˜ï¸ Migrar mis datos locales a la nube</button>
+                <button onclick="migrarDatos()" style="background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.3);padding:.5rem 1.2rem;border-radius:8px;cursor:pointer;font-size:.82rem;width:100%;">Migrar mis datos locales a la nube</button>
                 <div id="migrate-msg" style="font-size:.78rem;margin-top:.5rem;color:rgba(255,255,255,.7);text-align:center;"></div>
             </div>
         </div>
