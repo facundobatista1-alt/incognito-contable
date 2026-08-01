@@ -831,8 +831,49 @@ const MP_RELEASE_API_DEFAULT_URL = 'https://incognito-ventas.onrender.com/api/me
 const MP_ACCOUNT_MOVEMENTS_API_DEFAULT_URL = 'https://incognito-ventas.onrender.com/api/mercadopago/account-movements';
 const MP_UNRELEASED_BALANCE_API_DEFAULT_URL = 'https://incognito-ventas.onrender.com/api/mercadopago/unreleased-balance';
 
+function stripCashMeta(descripcion) {
+    return String(descripcion || '').replace(/\s*\|\s*\[\[HC_CASH:\d{4}-\d{2}-\d{2}\]\]/g, '').trim();
+}
+
+function getTxCashDate(t) {
+    var desc = String((t && t.descripcion) || '');
+    var m = desc.match(/\[\[HC_CASH:(\d{4}-\d{2}-\d{2})\]\]/);
+    if (m) return m[1];
+    if (t && t.pendiente && (t.cuenta === 'MP FB' || t.cuenta === 'Flux') && Number(t.ingreso || 0) >= 0) return null;
+    return t ? t.fecha : null;
+}
+
+function setTxCashDate(t, fechaCaja) {
+    if (!t) return;
+    var base = stripCashMeta(t.descripcion || '');
+    t.descripcion = base + (fechaCaja ? ' | [[HC_CASH:' + fechaCaja + ']]' : '');
+}
+
+function todayLocal() {
+    var d = new Date();
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+}
+
+function impactsCashBy(t, upTo) {
+    var cashDate = getTxCashDate(t);
+    if (!cashDate) return false;
+    return !upTo || cashDate <= upTo;
+}
+
+function isPendingAt(t, upTo) {
+    if (!t || !(t.cuenta === 'MP FB' || t.cuenta === 'Flux')) return false;
+    if (!upTo) return !!t.pendiente;
+    if (t.fecha > upTo) return false;
+    var cashDate = getTxCashDate(t);
+    return !cashDate || cashDate > upTo;
+}
+
 function parseTxIdMP(descripcion) {
     if (!descripcion) return { desc: '', txId: '' };
+    descripcion = stripCashMeta(descripcion);
     var parts = descripcion.split(' | ');
     if (parts.length >= 2 && /^\d{8,}$/.test(parts[parts.length - 1])) {
         return { desc: parts.slice(0, -1).join(' | '), txId: parts[parts.length - 1] };
@@ -1117,7 +1158,7 @@ function uid() { return Date.now().toString(36) + Math.random().toString(36).sli
 function getAccountBalance(account, upTo) {
     const txBal = transactions.reduce((s, t) => {
         if (t.cuenta !== account) return s;
-        if (upTo && t.fecha > upTo) return s;
+        if (!impactsCashBy(t, upTo)) return s;
         return s + t.ingreso - t.egreso;
     }, 0);
     const trBal = transfers.reduce((s, t) => {
@@ -1250,6 +1291,7 @@ function saveEdit() {
     const monto = parseFloat(document.getElementById('e-monto').value) || 0;
     const cat   = document.getElementById('e-categoria').value;
     const wasIngreso = document.getElementById('e-btn-ingreso').classList.contains('active-ingreso');
+    var oldCashDate = getTxCashDate(t);
 
     t.fecha       = document.getElementById('e-fecha').value;
     t.cuenta      = document.getElementById('e-cuenta').value;
@@ -1262,6 +1304,11 @@ function saveEdit() {
     t.egreso      = wasIngreso ? 0 : monto;
     if (t.cuenta === 'Flux' && monto === 0) { t.pendiente = true; }
     else { t.pendiente = false; }
+    if (t.pendiente) {
+        setTxCashDate(t, null);
+    } else if ((t.cuenta === 'MP FB' || t.cuenta === 'Flux') && wasIngreso && monto > 0) {
+        setTxCashDate(t, oldCashDate || t.fecha);
+    }
 
     transactions.sort((a,b) => a.fecha.localeCompare(b.fecha));
     localStorage.setItem('hc_tx', JSON.stringify(transactions));
@@ -1326,12 +1373,13 @@ function updateMpFechaLib() {
 function completarFlux(id) {
     const t = transactions.find(x => x.id === id);
     if (!t) return;
-    const val = prompt(`Completar monto para "${t.descripcion || t.nroInterno || id}"\nFecha: ${t.fecha}\n\nIngresá el monto:`);
+    const val = prompt(`Completar monto para "${stripCashMeta(t.descripcion || '') || t.nroInterno || id}"\nFecha: ${t.fecha}\n\nIngresá el monto:`);
     if (val === null) return;
     const monto = parseFloat(val.replace(',','.'));
     if (isNaN(monto) || monto <= 0) { alert('Monto inválido'); return; }
     t.ingreso = monto;
     t.pendiente = false;
+    setTxCashDate(t, todayLocal());
     localStorage.setItem('hc_tx', JSON.stringify(transactions));
     if (sb) sb.from('transactions').upsert([sbRow(t)]).then(()=>{});
     renderAll();
@@ -1413,7 +1461,7 @@ function parsearLote() {
         for (const item of _loteItems) {
             html += `<tr style="border-bottom:1px solid #f3f4f6">
                 <td style="padding:4px 8px"><strong>#${item.nro}</strong></td>
-                <td style="padding:4px 8px">${item.tx.descripcion||'-'}</td>
+                <td style="padding:4px 8px">${stripCashMeta(item.tx.descripcion||'')||'-'}</td>
                 <td style="padding:4px 8px">${item.tx.fecha}</td>
                 <td style="padding:4px 8px;text-align:right;color:#15803d;font-weight:600">${fmt(item.monto)}</td>
             </tr>`;
@@ -1435,6 +1483,7 @@ function confirmarLote() {
     for (const item of _loteItems) {
         item.tx.ingreso  = item.monto;
         item.tx.pendiente = false;
+        setTxCashDate(item.tx, todayLocal());
         count++;
     }
     const ids = _loteItems.map(item => item.tx.id);
@@ -1452,7 +1501,7 @@ function exportarExcel() {
     const headers = ["Fecha","Descripción","N° Interno","Categoría","Cuenta","Ingreso","Egreso","Saldo","Estado"];
     const data = rows.map(t => [
         t.fecha,
-        t.descripcion || "",
+        stripCashMeta(t.descripcion || ""),
         t.nroInterno  || "",
         t.categoria   || "",
         t.cuenta      || "",
@@ -1677,7 +1726,7 @@ function renderDashboard() {
     const saldo    = saldoARS + _cajaARS;
     const ventas   = tx.filter(t => t.categoria === 'Venta de producto' && t.ingreso > 0);
     const ticketAvg = ventas.length ? totalIng / ventas.length : 0;
-    const fluxPend  = transactions.filter(t => t.cuenta === 'Flux' && t.pendiente);
+    const fluxPend  = transactions.filter(t => t.cuenta === 'Flux' && isPendingAt(t, balCutoff));
     const fluxAvgHist = getFluxHistoricalAverage();
     const fluxMonto = fluxPend.length * fluxAvgHist;
 
@@ -1701,12 +1750,12 @@ function renderDashboard() {
             + saldoSub + '</div>';
         kpiHtml += '<div class="kpi-card"><div class="kpi-label">Ticket promedio</div><div class="kpi-value purple">' + fmt(ticketAvg) + '</div><div class="kpi-sub">' + ventas.length + ' ventas</div></div>';
         kpiHtml += '<div class="kpi-card"><div class="kpi-label">Flux pendientes</div><div class="kpi-value orange">' + fluxPend.length + '</div><div class="kpi-sub">' + (fluxMonto > 0 ? fmt(fluxMonto) + ' (aproximado)' : 'sin promedio disponible') + '</div></div>';
-        kpiHtml += getMpKpiHtml();
+        kpiHtml += getMpKpiHtml(balCutoff);
         if (bestMonth) {
             kpiHtml += '<div class="kpi-card"><div class="kpi-label">Mejor mes</div><div class="kpi-value gray">' + bestMonth[0] + '</div><div class="kpi-sub">' + fmt(bestMonth[1]) + '</div></div>';
         }
         document.getElementById('dash-kpis').innerHTML = kpiHtml;
-        refreshMpUnreleasedBalance(false);
+        refreshMpUnreleasedBalance(false, balCutoff);
     })();
 
         // Account balances — frozen at end of selected period
@@ -1716,9 +1765,9 @@ function renderDashboard() {
         ACCOUNTS.map(acc => {
             const bal = getAccountBalance(acc, balCutoff);
             const mpPendAmt = acc === 'MP FB'
-                ? transactions.filter(t=>t.cuenta==='MP FB'&&t.pendiente&&(!balCutoff||t.fecha<=balCutoff)).reduce((s,t)=>s+t.ingreso,0)
+                ? transactions.filter(t=>t.cuenta==='MP FB'&&isPendingAt(t, balCutoff)).reduce((s,t)=>s+t.ingreso,0)
                 : 0;
-            const dispBal = acc === 'MP FB' ? bal - mpPendAmt : bal;
+            const dispBal = bal;
             const retLabel = mpPendAmt > 0
                 ? '<div style="font-size:.73rem;color:#2563eb;margin-top:2px">+ ' + fmtSigned(mpPendAmt) + ' retenido</div>'
                 : '';
@@ -1750,7 +1799,7 @@ function renderDashboard() {
         ? `<tr class="empty-row"><td colspan="6">Sin transacciones en el período</td></tr>`
         : recent.map(t => `<tr>
             <td>${fmtDate(t.fecha)}</td>
-            <td>${t.descripcion||'-'}</td>
+            <td>${stripCashMeta(t.descripcion||'')||'-'}</td>
             <td><span class="badge badge-gray">${t.categoria}</span></td>
             <td>${t.cuenta}</td>
             <td class="amount-pos">${t.ingreso>0?fmt(t.ingreso):''}</td>
@@ -1894,7 +1943,7 @@ function renderGastos() {
         ? `<tr class="empty-row"><td colspan="6">Sin egresos registrados</td></tr>`
         : [...txs].reverse().map(t => `<tr>
             <td>${fmtDate(t.fecha)}</td>
-            <td>${t.descripcion||'-'}</td>
+            <td>${stripCashMeta(t.descripcion||'')||'-'}</td>
             <td><span class="badge badge-red">${t.categoria}</span></td>
             <td>${t.cuenta}</td>
             <td class="amount-neg">${fmt(t.egreso)}</td>
@@ -1934,7 +1983,7 @@ function renderIngresos() {
         ? `<tr class="empty-row"><td colspan="7">Sin ingresos registrados</td></tr>`
         : [...txs].reverse().map(t => `<tr>
             <td>${fmtDate(t.fecha)}</td>
-            <td>${t.descripcion||'-'}</td>
+            <td>${stripCashMeta(t.descripcion||'')||'-'}</td>
             <td>${t.nroInterno ? `<span class="badge badge-purple">#${t.nroInterno}</span>` : ''}</td>
             <td><span class="badge badge-green">${t.categoria}</span></td>
             <td>${t.cuenta}</td>
@@ -1991,7 +2040,7 @@ function renderHistorial(resetPage = true) {
     } else {
         if (search) filtered = filtered.filter(function(t) {
             var parsed = parseTxIdMP(t.descripcion || '');
-            return (t.descripcion || '').toLowerCase().includes(search)
+            return stripCashMeta(t.descripcion || '').toLowerCase().includes(search)
                 || (parsed.desc || '').toLowerCase().includes(search)
                 || (parsed.txId || '').toLowerCase().includes(search)
                 || (t.nroInterno || '').toLowerCase().includes(search)
@@ -2352,14 +2401,15 @@ function getFluxHistoricalAverage() {
     return cargadas.reduce(function(s,t){ return s + Number(t.ingreso || 0); }, 0) / cargadas.length;
 }
 
-function getMpKpiHtml() {
-    var mpP = transactions.filter(function(t){ return t.cuenta === 'MP FB' && t.pendiente; });
+function getMpKpiHtml(cutoff) {
+    var mpP = transactions.filter(function(t){ return t.cuenta === 'MP FB' && isPendingAt(t, cutoff); });
     if (!mpP.length) return '';
     var mpM = mpP.reduce(function(s,t){ return s + t.ingreso; }, 0);
-    var mpSub = '<span id="mp-unreleased-kpi-sub">Consultando MP...</span>';
-    if (_mpUnreleasedBalance && _mpUnreleasedBalance.ok) {
+    var useApi = !cutoff || cutoff >= todayLocal();
+    var mpSub = useApi ? '<span id="mp-unreleased-kpi-sub">Consultando MP...</span>' : '<span id="mp-unreleased-kpi-sub">' + (mpM > 0 ? fmt(mpM) + ' pendientes al cierre (aproximado)' : 'pendiente al cierre') + '</span>';
+    if (useApi && _mpUnreleasedBalance && _mpUnreleasedBalance.ok) {
         mpSub = '<span id="mp-unreleased-kpi-sub">' + fmt(_mpUnreleasedBalance.total) + ' por liberar MP (aproximado)</span>';
-    } else if (_mpUnreleasedBalance && _mpUnreleasedBalance.error) {
+    } else if (useApi && _mpUnreleasedBalance && _mpUnreleasedBalance.error) {
         mpSub = '<span id="mp-unreleased-kpi-sub">' + (mpM > 0 ? fmt(mpM) + ' local (aproximado)' : 'sin monto local') + '</span>';
     }
     return '<div class="kpi-card" style="border-color:#3b82f6">'
@@ -2376,12 +2426,15 @@ function getMpKpiHtml() {
 var _mpUnreleasedBalance = null;
 var _mpUnreleasedLoading = false;
 
-function updateMpUnreleasedKpiSub() {
+function updateMpUnreleasedKpiSub(cutoff) {
     var el = document.getElementById('mp-unreleased-kpi-sub');
     if (!el) return;
-    var mpP = transactions.filter(function(t){ return t.cuenta === 'MP FB' && t.pendiente; });
+    var mpP = transactions.filter(function(t){ return t.cuenta === 'MP FB' && isPendingAt(t, cutoff); });
     var mpM = mpP.reduce(function(s,t){ return s + t.ingreso; }, 0);
-    if (_mpUnreleasedBalance && _mpUnreleasedBalance.ok) {
+    var useApi = !cutoff || cutoff >= todayLocal();
+    if (!useApi) {
+        el.textContent = mpM > 0 ? fmt(mpM) + ' pendientes al cierre (aproximado)' : 'pendiente al cierre';
+    } else if (_mpUnreleasedBalance && _mpUnreleasedBalance.ok) {
         el.textContent = fmt(_mpUnreleasedBalance.total) + ' por liberar MP (aproximado)';
     } else if (_mpUnreleasedBalance && _mpUnreleasedBalance.error) {
         el.textContent = mpM > 0 ? fmt(mpM) + ' local (aproximado)' : 'sin monto local';
@@ -2390,17 +2443,21 @@ function updateMpUnreleasedKpiSub() {
     }
 }
 
-async function refreshMpUnreleasedBalance(force) {
-    var mpP = transactions.filter(function(t){ return t.cuenta === 'MP FB' && t.pendiente; });
+async function refreshMpUnreleasedBalance(force, cutoff) {
+    var mpP = transactions.filter(function(t){ return t.cuenta === 'MP FB' && isPendingAt(t, cutoff); });
     if (!mpP.length && !force) return;
+    if (cutoff && cutoff < todayLocal()) {
+        updateMpUnreleasedKpiSub(cutoff);
+        return;
+    }
     var now = Date.now();
     if (!force && _mpUnreleasedBalance && _mpUnreleasedBalance.ts && now - _mpUnreleasedBalance.ts < 5 * 60 * 1000) {
-        updateMpUnreleasedKpiSub();
+        updateMpUnreleasedKpiSub(cutoff);
         return;
     }
     if (_mpUnreleasedLoading) return;
     _mpUnreleasedLoading = true;
-    updateMpUnreleasedKpiSub();
+    updateMpUnreleasedKpiSub(cutoff);
     try {
         var apiUrl = getMpUnreleasedBalanceApiUrl();
         var headers = { 'Content-Type': 'application/json' };
@@ -2428,7 +2485,7 @@ async function refreshMpUnreleasedBalance(force) {
         _mpUnreleasedBalance = { ok: false, error: true, ts: Date.now() };
     } finally {
         _mpUnreleasedLoading = false;
-        updateMpUnreleasedKpiSub();
+        updateMpUnreleasedKpiSub(cutoff);
     }
 }
 
@@ -2872,13 +2929,14 @@ async function confirmMpPago(id) {
     if (!t) return;
     // Si no tiene monto, pedirlo antes de confirmar
     if (!t.ingreso || t.ingreso === 0) {
-        var val = prompt('Ingresá el monto recibido para orden ' + (t.nroInterno || t.descripcion || '') + ':');
+        var val = prompt('Ingresá el monto recibido para orden ' + (t.nroInterno || stripCashMeta(t.descripcion || '') || '') + ':');
         if (val === null) return;
         var monto = parseFloat(val.replace(/[.,](?=\d{3})/g, '').replace(',', '.'));
         if (!monto || monto <= 0) { alert('Monto inválido'); return; }
         t.ingreso = monto;
     }
     t.pendiente = false;
+    setTxCashDate(t, todayLocal());
     localStorage.setItem('hc_tx', JSON.stringify(transactions));
     if (sb) await sb.from('transactions').upsert([sbRow(t)]);
     renderDashboard();
@@ -2892,7 +2950,10 @@ async function confirmarMpGrupo(fechaLib) {
     if (!grupo.length) return;
     var total = grupo.reduce(function(s,t){ return s + t.ingreso; }, 0);
     if (!confirm('Confirmar ' + grupo.length + ' cobro(s) por ' + fmtSigned(total) + ' del ' + fmtDate(fechaLib) + '?')) return;
-    grupo.forEach(function(t){ t.pendiente = false; });
+    grupo.forEach(function(t){
+        t.pendiente = false;
+        setTxCashDate(t, fechaLib);
+    });
     localStorage.setItem('hc_tx', JSON.stringify(transactions));
     if (sb) await sb.from('transactions').upsert(grupo.map(sbRow));
     renderDashboard();
@@ -2976,6 +3037,7 @@ async function consultarLiberacionesMp() {
             if (release && release.amount > 0) {
                 t.ingreso = release.amount;
                 t.pendiente = false;
+                setTxCashDate(t, release.date || todayLocal());
                 completadas.push({ tx: t, release: release });
             } else {
                 noLiberadas.push(t);
