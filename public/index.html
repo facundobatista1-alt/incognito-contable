@@ -2691,16 +2691,19 @@ async function consultarMovimientosMp() {
         renderPreviewMovimientosMp();
         var nuevos = rows.filter(function(m){ return !m.existe; }).length;
         var yaCargados = rows.length - nuevos;
+        var ventasFiltradas = data && data.report && Number(data.report.filteredSales || 0);
+        var ventasMsg = ventasFiltradas ? ' Ademas encontre ' + ventasFiltradas + ' venta(s) MP que no muestro para no duplicarlas.' : '';
         if (!rows.length) {
             status.style.color = '#92400e';
-            status.textContent = 'No encontre movimientos en ese rango.';
+            status.textContent = 'No encontre movimientos en ese rango.' + ventasMsg;
         } else if (nuevos) {
             status.style.color = '#15803d';
             status.textContent = 'Encontre ' + nuevos + ' movimiento(s) nuevos para revisar.'
-                + (yaCargados ? ' ' + yaCargados + ' ya estaban cargados.' : '');
+                + (yaCargados ? ' ' + yaCargados + ' ya estaban cargados.' : '')
+                + ventasMsg;
         } else {
             status.style.color = '#6b7280';
-            status.textContent = 'Encontre ' + rows.length + ' movimiento(s), pero ya estaban cargados.';
+            status.textContent = 'Encontre ' + rows.length + ' movimiento(s), pero ya estaban cargados.' + ventasMsg;
         }
     } catch(e) {
         status.style.color = '#dc2626';
