@@ -871,6 +871,54 @@ function isPendingAt(t, upTo) {
     return !cashDate || cashDate > upTo;
 }
 
+function addLocalDays(dateStr, n) {
+    var d = new Date(dateStr + 'T00:00:00');
+    d.setDate(d.getDate() + n);
+    return todayFromDate(d);
+}
+
+function todayFromDate(d) {
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+}
+
+function getBalanceSnapshots() {
+    try { return JSON.parse(localStorage.getItem('hc_balance_snapshots') || '{}') || {}; }
+    catch(e) { return {}; }
+}
+
+function saveBalanceSnapshots(snaps) {
+    localStorage.setItem('hc_balance_snapshots', JSON.stringify(snaps || {}));
+}
+
+function getBalanceSnapshot(dateStr) {
+    if (!dateStr) return null;
+    return getBalanceSnapshots()[dateStr] || null;
+}
+
+function captureBalanceSnapshot(dateStr) {
+    if (!dateStr || dateStr >= todayLocal()) return;
+    var snaps = getBalanceSnapshots();
+    if (snaps[dateStr]) return;
+    var balances = {};
+    ACCOUNTS.forEach(function(acc) {
+        balances[acc] = getAccountBalance(acc, dateStr, true);
+    });
+    snaps[dateStr] = { date: dateStr, createdAt: new Date().toISOString(), accounts: balances, cajaUsd: getCajaBalance(dateStr, true) };
+    saveBalanceSnapshots(snaps);
+}
+
+function ensureHistoricalBalanceSnapshots() {
+    var today = todayLocal();
+    var d = new Date(today + 'T00:00:00');
+    var yesterday = addLocalDays(today, -1);
+    var prevMonthEnd = todayFromDate(new Date(d.getFullYear(), d.getMonth(), 0));
+    captureBalanceSnapshot(yesterday);
+    captureBalanceSnapshot(prevMonthEnd);
+}
+
 function parseTxIdMP(descripcion) {
     if (!descripcion) return { desc: '', txId: '' };
     descripcion = stripCashMeta(descripcion);
@@ -1048,6 +1096,7 @@ async function initSupabase() {
         transactions = JSON.parse(localStorage.getItem('hc_tx') || '[]');
         transfers    = JSON.parse(localStorage.getItem('hc_tr') || '[]');
     }
+    ensureHistoricalBalanceSnapshots();
     loader.style.display = 'none';
     renderAll();
 }
@@ -1155,7 +1204,13 @@ function fmtDate(d) {
 }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
 
-function getAccountBalance(account, upTo) {
+function getAccountBalance(account, upTo, ignoreSnapshot) {
+    if (upTo && !ignoreSnapshot) {
+        var snap = getBalanceSnapshot(upTo);
+        if (snap && snap.accounts && Object.prototype.hasOwnProperty.call(snap.accounts, account)) {
+            return Number(snap.accounts[account] || 0);
+        }
+    }
     const txBal = transactions.reduce((s, t) => {
         if (t.cuenta !== account) return s;
         if (!impactsCashBy(t, upTo)) return s;
@@ -2190,7 +2245,13 @@ init();
 // CAJA DE AHORRO
 // ══════════════════════════════════════════════════════
 
-function getCajaBalance(upTo) {
+function getCajaBalance(upTo, ignoreSnapshot) {
+    if (upTo && !ignoreSnapshot) {
+        var snap = getBalanceSnapshot(upTo);
+        if (snap && Object.prototype.hasOwnProperty.call(snap, 'cajaUsd')) {
+            return Number(snap.cajaUsd || 0);
+        }
+    }
     return transactions.reduce((s, t) => {
         if (t.cuenta !== 'Caja de Ahorro') return s;
         if (upTo && t.fecha > upTo) return s;
