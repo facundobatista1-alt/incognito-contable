@@ -2591,7 +2591,16 @@ function stripMpMarkerText(value) {
         .trim();
 }
 
+function normalizeMpCategoryName(value) {
+    var cat = String(value || '').trim();
+    if (/^env/i.test(cat) && (cat.indexOf('Ã') >= 0 || cat.toLowerCase().indexOf('envios') >= 0)) return 'Envíos';
+    if (cat === 'EnvÃ­os') return 'Envíos';
+    if (cat === 'DevoluciÃ³n') return 'Devolución';
+    return cat;
+}
+
 function applyMpMovementUiRules(m) {
+    m.categoria = normalizeMpCategoryName(m.categoria || 'Otros');
     var desc = stripMpMarkerText(m.descripcion || m.description || '');
     var text = (desc + ' ' + (m.transactionType || '')).toLowerCase();
     if (text.indexOf('mi correo') >= 0 || text.indexOf('micorreo') >= 0) {
