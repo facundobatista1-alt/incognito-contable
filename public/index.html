@@ -466,6 +466,10 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>
             Gastos
         </button>
+        <button class="nav-item" onclick="showPage('gastosFijos', this)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/></svg>
+            Gastos fijos
+        </button>
         <button class="nav-item" onclick="showPage('ingresos', this)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
             Ingresos
@@ -670,6 +674,59 @@
                 <table>
                     <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Cuenta</th><th>Monto</th><th></th></tr></thead>
                     <tbody id="gastos-list"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- GASTOS FIJOS -->
+        <div id="page-gastosFijos" class="page">
+            <div class="page-header">
+                <h2>Gastos fijos</h2>
+                <p>Control mensual de compromisos recurrentes</p>
+            </div>
+            <div class="kpi-row" id="gf-resumen"></div>
+            <div class="form-card">
+                <form id="form-gasto-fijo" onsubmit="saveGastoFijo(event)">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Descripción</label>
+                            <input type="text" id="gf-desc" placeholder="Ej: alquiler, internet, monotributo" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Monto mensual ($)</label>
+                            <input type="text" inputmode="decimal" id="gf-monto" placeholder="Ej: 25000 o 12000+8000" required onblur="evalMonto(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();evalMonto(this)}">
+                        </div>
+                        <div class="form-group">
+                            <label>Categoría</label>
+                            <select id="gf-categoria" required></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Cuenta habitual</label>
+                            <select id="gf-cuenta"></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Día de vencimiento</label>
+                            <input type="number" id="gf-dia" min="1" max="31" placeholder="Ej: 10">
+                        </div>
+                        <div class="form-group">
+                            <label>Estado</label>
+                            <select id="gf-activo">
+                                <option value="1">Activo</option>
+                                <option value="0">Pausado</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="margin-top:20px;display:flex;gap:10px;align-items:center">
+                        <button type="submit" class="btn btn-primary">Guardar gasto fijo</button>
+                        <button type="button" class="btn btn-outline" onclick="clearGastoFijoForm()">Limpiar</button>
+                    </div>
+                </form>
+            </div>
+            <div class="table-card">
+                <div class="table-card-header"><h3>Listado</h3></div>
+                <table>
+                    <thead><tr><th>Descripción</th><th>Categoría</th><th>Cuenta</th><th>Vence</th><th>Monto</th><th>Estado</th><th></th></tr></thead>
+                    <tbody id="gf-list"></tbody>
                 </table>
             </div>
         </div>
@@ -1184,7 +1241,7 @@ function showPage(page, el) {
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     document.getElementById('page-' + page).classList.add('active');
     if (el) el.classList.add('active');
-    const renders = { dashboard: renderDashboard, historial: renderHistorial, gastos: renderGastos, ingresos: renderIngresos, transferencias: renderTransfers };
+    const renders = { dashboard: renderDashboard, historial: renderHistorial, gastos: renderGastos, gastosFijos: renderGastosFijos, ingresos: renderIngresos, transferencias: renderTransfers };
     if (renders[page]) renders[page]();
 }
 
@@ -1667,7 +1724,7 @@ async function saveTransfer(e) {
 function renderAll() {
     const active = document.querySelector('.page.active');
     const pageId = active ? active.id.replace('page-','') : 'dashboard';
-    const renders = { dashboard: renderDashboard, historial: renderHistorial, gastos: renderGastos, ingresos: renderIngresos, transfers: renderTransfers, caja: renderCaja };
+    const renders = { dashboard: renderDashboard, historial: renderHistorial, gastos: renderGastos, gastosFijos: renderGastosFijos, ingresos: renderIngresos, transfers: renderTransfers, transferencias: renderTransfers, caja: renderCaja };
     try {
         if (renders[pageId]) renders[pageId]();
         if (pageId !== 'dashboard') renderDashboard();
@@ -2007,6 +2064,133 @@ function renderGastos() {
 }
 
 // ══════════════════════════════════════════════════════
+// GASTOS FIJOS
+// ══════════════════════════════════════════════════════
+let fixedExpenses = JSON.parse(localStorage.getItem('hc_gastos_fijos') || '[]');
+let editingGastoFijoId = null;
+
+function saveFixedExpenses() {
+    localStorage.setItem('hc_gastos_fijos', JSON.stringify(fixedExpenses));
+}
+
+function parseMoneyInput(value) {
+    const raw = String(value || '').replace(/,/g, '.').replace(/\s/g, '');
+    if (!raw) return 0;
+    if (/^[\d\.+\-*\/()\s]+$/.test(raw) && /[+\-*\/()]/.test(raw)) {
+        try {
+            const result = Function('"use strict"; return (' + raw + ')')();
+            return isFinite(result) ? parseFloat(result.toFixed(2)) : 0;
+        } catch(e) { return 0; }
+    }
+    return parseFloat(raw) || 0;
+}
+
+function clearGastoFijoForm() {
+    editingGastoFijoId = null;
+    document.getElementById('gf-desc').value = '';
+    document.getElementById('gf-monto').value = '';
+    document.getElementById('gf-categoria').value = '';
+    document.getElementById('gf-cuenta').value = '';
+    document.getElementById('gf-dia').value = '';
+    document.getElementById('gf-activo').value = '1';
+    const btn = document.querySelector('#form-gasto-fijo button[type="submit"]');
+    if (btn) btn.textContent = 'Guardar gasto fijo';
+}
+
+function saveGastoFijo(e) {
+    e.preventDefault();
+    const monto = parseMoneyInput(document.getElementById('gf-monto').value);
+    if (!monto || monto <= 0) { alert('Ingresá un monto válido.'); return; }
+    const diaRaw = parseInt(document.getElementById('gf-dia').value || '0', 10);
+    const item = {
+        id: editingGastoFijoId || uid(),
+        descripcion: document.getElementById('gf-desc').value.trim(),
+        monto: monto,
+        categoria: document.getElementById('gf-categoria').value,
+        cuenta: document.getElementById('gf-cuenta').value,
+        dia: diaRaw >= 1 && diaRaw <= 31 ? diaRaw : '',
+        activo: document.getElementById('gf-activo').value === '1'
+    };
+    if (!item.descripcion) { alert('Ingresá una descripción.'); return; }
+    if (editingGastoFijoId) {
+        fixedExpenses = fixedExpenses.map(x => x.id === editingGastoFijoId ? item : x);
+    } else {
+        fixedExpenses.push(item);
+    }
+    fixedExpenses.sort((a,b) => (Number(a.dia || 99) - Number(b.dia || 99)) || String(a.descripcion).localeCompare(String(b.descripcion)));
+    saveFixedExpenses();
+    clearGastoFijoForm();
+    renderGastosFijos();
+    showToast('Gasto fijo guardado');
+}
+
+function editGastoFijo(id) {
+    const item = fixedExpenses.find(x => x.id === id);
+    if (!item) return;
+    editingGastoFijoId = id;
+    document.getElementById('gf-desc').value = item.descripcion || '';
+    document.getElementById('gf-monto').value = item.monto || '';
+    document.getElementById('gf-categoria').value = item.categoria || '';
+    document.getElementById('gf-cuenta').value = item.cuenta || '';
+    document.getElementById('gf-dia').value = item.dia || '';
+    document.getElementById('gf-activo').value = item.activo === false ? '0' : '1';
+    const btn = document.querySelector('#form-gasto-fijo button[type="submit"]');
+    if (btn) btn.textContent = 'Actualizar gasto fijo';
+    document.getElementById('gf-desc').focus();
+}
+
+function deleteGastoFijo(id) {
+    if (!confirm('¿Eliminar este gasto fijo?')) return;
+    fixedExpenses = fixedExpenses.filter(x => x.id !== id);
+    saveFixedExpenses();
+    if (editingGastoFijoId === id) clearGastoFijoForm();
+    renderGastosFijos();
+}
+
+function toggleGastoFijo(id) {
+    const item = fixedExpenses.find(x => x.id === id);
+    if (!item) return;
+    item.activo = item.activo === false;
+    saveFixedExpenses();
+    renderGastosFijos();
+}
+
+function renderGastosFijos() {
+    const activos = fixedExpenses.filter(x => x.activo !== false);
+    const pausados = fixedExpenses.length - activos.length;
+    const total = activos.reduce((s,x) => s + Number(x.monto || 0), 0);
+    const today = new Date();
+    const todayDay = today.getDate();
+    const proximos = activos.filter(x => x.dia && Number(x.dia) >= todayDay && Number(x.dia) <= todayDay + 7);
+
+    const resumen = document.getElementById('gf-resumen');
+    if (resumen) {
+        resumen.innerHTML = ''
+            + '<div class="kpi-card"><div class="kpi-label">Total mensual</div><div class="kpi-value red">' + fmt(total) + '</div><div class="kpi-sub">' + activos.length + ' activos</div></div>'
+            + '<div class="kpi-card"><div class="kpi-label">Próximos 7 días</div><div class="kpi-value orange">' + proximos.length + '</div><div class="kpi-sub">' + (proximos.length ? fmt(proximos.reduce((s,x)=>s+Number(x.monto||0),0)) : 'sin vencimientos') + '</div></div>'
+            + '<div class="kpi-card"><div class="kpi-label">Pausados</div><div class="kpi-value gray">' + pausados + '</div><div class="kpi-sub">no suman al total</div></div>';
+    }
+
+    const tbody = document.getElementById('gf-list');
+    if (!tbody) return;
+    tbody.innerHTML = fixedExpenses.length === 0
+        ? '<tr class="empty-row"><td colspan="7">Sin gastos fijos cargados</td></tr>'
+        : fixedExpenses.map(item => {
+            const activo = item.activo !== false;
+            const vence = item.dia ? 'Día ' + item.dia : '-';
+            return '<tr style="' + (activo ? '' : 'opacity:.58') + '">'
+                + '<td style="font-weight:600;color:var(--gray-700)">' + (item.descripcion || '-') + '</td>'
+                + '<td><span class="badge badge-red">' + (item.categoria || 'Otros') + '</span></td>'
+                + '<td>' + (item.cuenta || '-') + '</td>'
+                + '<td>' + vence + '</td>'
+                + '<td class="amount-neg">' + fmt(item.monto || 0) + '</td>'
+                + '<td><button class="btn btn-outline btn-sm" onclick="toggleGastoFijo(\'' + item.id + '\')">' + (activo ? 'Activo' : 'Pausado') + '</button></td>'
+                + '<td style="display:flex;gap:6px"><button class="btn btn-outline btn-sm" onclick="editGastoFijo(\'' + item.id + '\')">Editar</button><button class="btn btn-ghost btn-sm" onclick="deleteGastoFijo(\'' + item.id + '\')">Eliminar</button></td>'
+                + '</tr>';
+        }).join('');
+}
+
+// ══════════════════════════════════════════════════════
 // RENDER INGRESOS
 // ══════════════════════════════════════════════════════
 function renderIngresos() {
@@ -2228,13 +2412,15 @@ function init() {
     document.getElementById('t-fecha').value = today;
 
     const accountOpts = ACCOUNTS.map(a => `<option>${a}</option>`).join('');
-    ['f-cuenta','t-origen','t-destino','fg-cuenta','fi-cuenta','h-cuenta'].forEach(id => {
+    ['f-cuenta','t-origen','t-destino','fg-cuenta','fi-cuenta','h-cuenta','gf-cuenta'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.innerHTML = el.innerHTML + accountOpts;
     });
 
     const catOpts = ALL_CATS.map(c => `<option>${c}</option>`).join('');
     document.getElementById('h-cat').innerHTML += catOpts;
+    const gfCat = document.getElementById('gf-categoria');
+    if (gfCat) gfCat.innerHTML = '<option value="">Seleccioná una categoría...</option>' + EXPENSE_CATS.map(c => `<option>${c}</option>`).join('');
 
     updateCatSelect();
     renderDashboard();
