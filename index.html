@@ -693,8 +693,15 @@
                             <input type="text" id="gf-desc" placeholder="Ej: alquiler, internet, monotributo" required>
                         </div>
                         <div class="form-group">
-                            <label>Monto mensual ($)</label>
-                            <input type="text" inputmode="decimal" id="gf-monto" placeholder="Ej: 25000 o 12000+8000" required onblur="evalMonto(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();evalMonto(this)}">
+                            <label>Monto mensual</label>
+                            <input type="text" inputmode="decimal" id="gf-monto" placeholder="Ej: 25000 o 27" required onblur="evalMonto(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();evalMonto(this)}">
+                        </div>
+                        <div class="form-group">
+                            <label>Moneda</label>
+                            <select id="gf-moneda">
+                                <option value="ARS">ARS</option>
+                                <option value="USD">USD</option>
+                            </select>
                         </div>
                         <div class="form-group">
                             <label>Categoría</label>
@@ -705,8 +712,8 @@
                             <select id="gf-cuenta"></select>
                         </div>
                         <div class="form-group">
-                            <label>Día de vencimiento</label>
-                            <input type="number" id="gf-dia" min="1" max="31" placeholder="Ej: 10">
+                            <label>Vencimiento</label>
+                            <input type="text" id="gf-vence" placeholder="Ej: 22 o Entre 5 y 7">
                         </div>
                         <div class="form-group">
                             <label>Estado</label>
@@ -714,6 +721,10 @@
                                 <option value="1">Activo</option>
                                 <option value="0">Pausado</option>
                             </select>
+                        </div>
+                        <div class="form-group full">
+                            <label>Nota</label>
+                            <input type="text" id="gf-nota" placeholder="Ej: se paga con tarjeta, semestral, estimado">
                         </div>
                     </div>
                     <div style="margin-top:20px;display:flex;gap:10px;align-items:center">
@@ -725,7 +736,7 @@
             <div class="table-card">
                 <div class="table-card-header"><h3>Listado</h3></div>
                 <table>
-                    <thead><tr><th>Descripción</th><th>Categoría</th><th>Cuenta</th><th>Vence</th><th>Monto</th><th>Estado</th><th></th></tr></thead>
+                    <thead><tr><th>Descripción</th><th>Categoría</th><th>Cuenta</th><th>Vence</th><th>Monto mensual</th><th>Nota</th><th>Estado</th><th></th></tr></thead>
                     <tbody id="gf-list"></tbody>
                 </table>
             </div>
@@ -2066,7 +2077,25 @@ function renderGastos() {
 // ══════════════════════════════════════════════════════
 // GASTOS FIJOS
 // ══════════════════════════════════════════════════════
+const DEFAULT_FIXED_EXPENSES = [
+    { id: 'gf_microsoft', descripcion: 'Microsoft', monto: 27, moneda: 'USD', categoria: 'Otros', cuenta: '', vence: 'Entre 5 y 7', nota: 'Suele entrar por tarjeta', activo: true },
+    { id: 'gf_render', descripcion: 'Render', monto: 27, moneda: 'USD', categoria: 'Tienda online', cuenta: '', vence: 'Entre 5 y 7', nota: 'Suele entrar por tarjeta', activo: true },
+    { id: 'gf_revie', descripcion: 'Revie', monto: 28.20, moneda: 'USD', categoria: 'Otros', cuenta: '', vence: 'Entre 5 y 7', nota: 'Suele entrar por tarjeta', activo: true },
+    { id: 'gf_os_mv', descripcion: 'Obra Social MV', monto: 93339, moneda: 'ARS', categoria: 'Otros', cuenta: '', vence: 'Entre 5 y 7', nota: 'Suele entrar por tarjeta', activo: true },
+    { id: 'gf_os_fb', descripcion: 'Obra Social FB', monto: 93339, moneda: 'ARS', categoria: 'Otros', cuenta: '', vence: 'Entre 5 y 7', nota: 'Suele entrar por tarjeta', activo: true },
+    { id: 'gf_wsp_mkt', descripcion: 'Wsp Mkt', monto: 40, moneda: 'USD', categoria: 'Publicidad/Marketing', cuenta: '', vence: '1', nota: '', activo: true },
+    { id: 'gf_tienda_nube', descripcion: 'Plan Tienda Nube', monto: 78999, moneda: 'ARS', categoria: 'Tienda online', cuenta: '', vence: '16', nota: '', activo: true },
+    { id: 'gf_kommo', descripcion: 'Kommo', monto: 25, moneda: 'USD', categoria: 'Otros', cuenta: '', vence: 'Semestral', nota: 'Se paga cada 6 meses el total de USD 150', activo: true },
+    { id: 'gf_monotributo_fb', descripcion: 'Monotributo FB', monto: 500000, moneda: 'ARS', categoria: 'Otros', cuenta: '', vence: '22', nota: '', activo: true },
+    { id: 'gf_monotributo_mv', descripcion: 'Monotributo MV', monto: 100000, moneda: 'ARS', categoria: 'Otros', cuenta: '', vence: '22', nota: '', activo: true }
+];
+
 let fixedExpenses = JSON.parse(localStorage.getItem('hc_gastos_fijos') || '[]');
+if (!fixedExpenses.length && !localStorage.getItem('hc_gastos_fijos_seeded')) {
+    fixedExpenses = DEFAULT_FIXED_EXPENSES.slice();
+    localStorage.setItem('hc_gastos_fijos_seeded', '1');
+    localStorage.setItem('hc_gastos_fijos', JSON.stringify(fixedExpenses));
+}
 let editingGastoFijoId = null;
 
 function saveFixedExpenses() {
@@ -2089,9 +2118,11 @@ function clearGastoFijoForm() {
     editingGastoFijoId = null;
     document.getElementById('gf-desc').value = '';
     document.getElementById('gf-monto').value = '';
+    document.getElementById('gf-moneda').value = 'ARS';
     document.getElementById('gf-categoria').value = '';
     document.getElementById('gf-cuenta').value = '';
-    document.getElementById('gf-dia').value = '';
+    document.getElementById('gf-vence').value = '';
+    document.getElementById('gf-nota').value = '';
     document.getElementById('gf-activo').value = '1';
     const btn = document.querySelector('#form-gasto-fijo button[type="submit"]');
     if (btn) btn.textContent = 'Guardar gasto fijo';
@@ -2101,14 +2132,15 @@ function saveGastoFijo(e) {
     e.preventDefault();
     const monto = parseMoneyInput(document.getElementById('gf-monto').value);
     if (!monto || monto <= 0) { alert('Ingresá un monto válido.'); return; }
-    const diaRaw = parseInt(document.getElementById('gf-dia').value || '0', 10);
     const item = {
         id: editingGastoFijoId || uid(),
         descripcion: document.getElementById('gf-desc').value.trim(),
         monto: monto,
+        moneda: document.getElementById('gf-moneda').value || 'ARS',
         categoria: document.getElementById('gf-categoria').value,
         cuenta: document.getElementById('gf-cuenta').value,
-        dia: diaRaw >= 1 && diaRaw <= 31 ? diaRaw : '',
+        vence: document.getElementById('gf-vence').value.trim(),
+        nota: document.getElementById('gf-nota').value.trim(),
         activo: document.getElementById('gf-activo').value === '1'
     };
     if (!item.descripcion) { alert('Ingresá una descripción.'); return; }
@@ -2117,7 +2149,7 @@ function saveGastoFijo(e) {
     } else {
         fixedExpenses.push(item);
     }
-    fixedExpenses.sort((a,b) => (Number(a.dia || 99) - Number(b.dia || 99)) || String(a.descripcion).localeCompare(String(b.descripcion)));
+    fixedExpenses.sort((a,b) => (getFixedExpenseDueDay(a) - getFixedExpenseDueDay(b)) || String(a.descripcion).localeCompare(String(b.descripcion)));
     saveFixedExpenses();
     clearGastoFijoForm();
     renderGastosFijos();
@@ -2130,9 +2162,11 @@ function editGastoFijo(id) {
     editingGastoFijoId = id;
     document.getElementById('gf-desc').value = item.descripcion || '';
     document.getElementById('gf-monto').value = item.monto || '';
+    document.getElementById('gf-moneda').value = item.moneda || 'ARS';
     document.getElementById('gf-categoria').value = item.categoria || '';
     document.getElementById('gf-cuenta').value = item.cuenta || '';
-    document.getElementById('gf-dia').value = item.dia || '';
+    document.getElementById('gf-vence').value = item.vence || item.dia || '';
+    document.getElementById('gf-nota').value = item.nota || '';
     document.getElementById('gf-activo').value = item.activo === false ? '0' : '1';
     const btn = document.querySelector('#form-gasto-fijo button[type="submit"]');
     if (btn) btn.textContent = 'Actualizar gasto fijo';
@@ -2155,35 +2189,57 @@ function toggleGastoFijo(id) {
     renderGastosFijos();
 }
 
+function fmtFixedAmount(item) {
+    var moneda = item.moneda || 'ARS';
+    var monto = Number(item.monto || 0);
+    return moneda === 'USD'
+        ? 'USD ' + monto.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : fmt(monto);
+}
+
+function getFixedExpenseDueDay(item) {
+    var text = String(item.vence || item.dia || '').trim();
+    var m = text.match(/\d{1,2}/);
+    if (!m) return 99;
+    var day = parseInt(m[0], 10);
+    return day >= 1 && day <= 31 ? day : 99;
+}
+
 function renderGastosFijos() {
     const activos = fixedExpenses.filter(x => x.activo !== false);
     const pausados = fixedExpenses.length - activos.length;
-    const total = activos.reduce((s,x) => s + Number(x.monto || 0), 0);
+    const totalARS = activos.filter(x => (x.moneda || 'ARS') !== 'USD').reduce((s,x) => s + Number(x.monto || 0), 0);
+    const totalUSD = activos.filter(x => (x.moneda || 'ARS') === 'USD').reduce((s,x) => s + Number(x.monto || 0), 0);
     const today = new Date();
     const todayDay = today.getDate();
-    const proximos = activos.filter(x => x.dia && Number(x.dia) >= todayDay && Number(x.dia) <= todayDay + 7);
+    const proximos = activos.filter(x => {
+        var day = getFixedExpenseDueDay(x);
+        return day >= todayDay && day <= todayDay + 7;
+    });
 
     const resumen = document.getElementById('gf-resumen');
     if (resumen) {
         resumen.innerHTML = ''
-            + '<div class="kpi-card"><div class="kpi-label">Total mensual</div><div class="kpi-value red">' + fmt(total) + '</div><div class="kpi-sub">' + activos.length + ' activos</div></div>'
-            + '<div class="kpi-card"><div class="kpi-label">Próximos 7 días</div><div class="kpi-value orange">' + proximos.length + '</div><div class="kpi-sub">' + (proximos.length ? fmt(proximos.reduce((s,x)=>s+Number(x.monto||0),0)) : 'sin vencimientos') + '</div></div>'
+            + '<div class="kpi-card"><div class="kpi-label">Total mensual ARS</div><div class="kpi-value red">' + fmt(totalARS) + '</div><div class="kpi-sub">' + activos.length + ' activos</div></div>'
+            + '<div class="kpi-card"><div class="kpi-label">Total mensual USD</div><div class="kpi-value purple">USD ' + totalUSD.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</div><div class="kpi-sub">sin convertir a pesos</div></div>'
+            + '<div class="kpi-card"><div class="kpi-label">Próximos 7 días</div><div class="kpi-value orange">' + proximos.length + '</div><div class="kpi-sub">' + (proximos.length ? proximos.map(x => x.descripcion).join(', ') : 'sin vencimientos') + '</div></div>'
             + '<div class="kpi-card"><div class="kpi-label">Pausados</div><div class="kpi-value gray">' + pausados + '</div><div class="kpi-sub">no suman al total</div></div>';
     }
 
     const tbody = document.getElementById('gf-list');
     if (!tbody) return;
     tbody.innerHTML = fixedExpenses.length === 0
-        ? '<tr class="empty-row"><td colspan="7">Sin gastos fijos cargados</td></tr>'
+        ? '<tr class="empty-row"><td colspan="8">Sin gastos fijos cargados</td></tr>'
         : fixedExpenses.map(item => {
             const activo = item.activo !== false;
-            const vence = item.dia ? 'Día ' + item.dia : '-';
+            const vence = item.vence || (item.dia ? 'Día ' + item.dia : '-');
             return '<tr style="' + (activo ? '' : 'opacity:.58') + '">'
                 + '<td style="font-weight:600;color:var(--gray-700)">' + (item.descripcion || '-') + '</td>'
                 + '<td><span class="badge badge-red">' + (item.categoria || 'Otros') + '</span></td>'
                 + '<td>' + (item.cuenta || '-') + '</td>'
                 + '<td>' + vence + '</td>'
-                + '<td class="amount-neg">' + fmt(item.monto || 0) + '</td>'
+                + '<td class="amount-neg">' + fmtFixedAmount(item) + '</td>'
+                + '<td style="color:#6b7280;font-size:.82rem">' + (item.nota || '') + '</td>'
                 + '<td><button class="btn btn-outline btn-sm" onclick="toggleGastoFijo(\'' + item.id + '\')">' + (activo ? 'Activo' : 'Pausado') + '</button></td>'
                 + '<td style="display:flex;gap:6px"><button class="btn btn-outline btn-sm" onclick="editGastoFijo(\'' + item.id + '\')">Editar</button><button class="btn btn-ghost btn-sm" onclick="deleteGastoFijo(\'' + item.id + '\')">Eliminar</button></td>'
                 + '</tr>';
