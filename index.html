@@ -66,17 +66,39 @@
         .financial-row { cursor:pointer; }
         .financial-row:hover td { background:#f8fafc; }
         .sheet-table-wrap { overflow:auto; border:1px solid var(--gray-200); border-radius:8px; max-height:58vh; }
-        .sheet-table-wrap table { min-width:760px; }
+        .sheet-table-wrap table { min-width:760px; border-collapse:separate; border-spacing:0; }
         .sheet-table-wrap td { padding:7px 9px; border-bottom:1px solid var(--gray-100); vertical-align:top; }
         .sheet-table-wrap tr:first-child td, .sheet-row-title td { font-weight:800; color:var(--gray-900); background:#f8fafc; }
         .sheet-row-section td { font-weight:800; color:var(--primary-dark); background:var(--primary-light); }
         .sheet-row-total td { font-weight:800; border-top:2px solid var(--gray-300); background:#fafafa; }
+        .balance-sheet-view { background:#fff; border:2px solid #111827; border-radius:2px; padding:0; overflow:auto; max-height:62vh; }
+        .balance-sheet-grid { min-width:900px; display:grid; grid-template-columns:1fr 1fr; gap:28px; padding:0 0 18px; }
+        .balance-title { grid-column:1/-1; text-align:center; background:#f3c9ef; color:#075985; font-weight:900; font-size:1.05rem; letter-spacing:.02em; padding:7px 10px; text-transform:uppercase; }
+        .balance-col-title { text-align:center; background:#e5e7eb; color:#075985; font-size:.8rem; padding:4px 8px; margin-bottom:8px; text-transform:uppercase; }
+        .balance-col { padding:0 0 0 0; }
+        .balance-col.left { padding-left:0; }
+        .balance-col.right { padding-right:0; }
+        .balance-section { margin:8px 0 26px; }
+        .balance-section-title { font-size:.82rem; color:#111827; border-bottom:2px solid #111827; padding:0 0 5px; margin:0 0 12px; width:52%; }
+        .balance-line, .balance-total, .balance-sum { display:grid; grid-template-columns:1fr 22px minmax(130px,auto); gap:6px; align-items:center; min-height:22px; padding:1px 0; font-size:.83rem; }
+        .balance-line .money-sign, .balance-total .money-sign, .balance-sum .money-sign { text-align:right; color:#111827; }
+        .balance-amount { text-align:right; color:#111827; font-variant-numeric:tabular-nums; }
+        .balance-total { background:#e5e7eb; font-weight:800; margin-top:8px; }
+        .balance-sum { background:#05b957; color:white; font-weight:900; margin-top:10px; }
+        .balance-sum .balance-amount, .balance-sum .money-sign { color:#111827; background:white; }
+        .balance-check { grid-column:1/-1; justify-self:center; width:55%; text-align:center; margin-top:24px; }
+        .balance-check-main { background:#05b957; color:white; font-weight:900; font-size:1.05rem; padding:16px 12px; }
+        .balance-check-status { background:#dcfce7; color:#15803d; font-size:.78rem; padding:6px; }
         .sheet-cell-pos { color:#15803d; font-weight:700; }
         .sheet-cell-neg { color:var(--danger); font-weight:700; }
         .analysis-chart-grid { display:grid; grid-template-columns:2fr 1fr; gap:18px; margin-top:18px; }
         @media (max-width:900px) { .analysis-chart-grid { grid-template-columns:1fr; } }
         .analysis-form-block { border:1px solid var(--gray-200); border-radius:8px; padding:16px; margin-bottom:16px; }
         .analysis-form-block h3 { font-size:.95rem; color:var(--gray-900); margin-bottom:12px; }
+        .concept-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; }
+        .concept-item { border:1px solid var(--gray-200); border-radius:8px; padding:13px 14px; background:white; }
+        .concept-item strong { display:block; color:var(--gray-900); margin-bottom:5px; }
+        .concept-item p { color:var(--gray-600); font-size:.84rem; line-height:1.35; }
 
         /* ── SORTABLE HEADERS ── */
         th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
@@ -718,7 +740,17 @@
                 <div class="table-card">
                     <div class="table-card-header"><h3>Estados financieros históricos</h3></div>
                     <table>
-                        <thead><tr><th>Mes</th><th>Ventas</th><th>Cant.</th><th>Ticket</th><th>Utilidad bruta</th><th>Margen</th><th>Publicidad</th><th>Saldo caja</th><th></th></tr></thead>
+                        <thead><tr>
+                            <th class="sortable" onclick="sortAnalisis('periodo')" id="sa-periodo">Mes <span class="sort-icon"></span></th>
+                            <th class="sortable" onclick="sortAnalisis('ventas')" id="sa-ventas">Ventas <span class="sort-icon"></span></th>
+                            <th class="sortable" onclick="sortAnalisis('cantidad')" id="sa-cantidad">Cant. <span class="sort-icon"></span></th>
+                            <th class="sortable" onclick="sortAnalisis('ticketPromedio')" id="sa-ticketPromedio">Ticket <span class="sort-icon"></span></th>
+                            <th class="sortable" onclick="sortAnalisis('utilidadBruta')" id="sa-utilidadBruta">Utilidad bruta <span class="sort-icon"></span></th>
+                            <th class="sortable" onclick="sortAnalisis('margenBruto')" id="sa-margenBruto">Margen <span class="sort-icon"></span></th>
+                            <th class="sortable" onclick="sortAnalisis('publicidad')" id="sa-publicidad">Publicidad <span class="sort-icon"></span></th>
+                            <th class="sortable" onclick="sortAnalisis('saldoCaja')" id="sa-saldoCaja">Saldo caja <span class="sort-icon"></span></th>
+                            <th></th>
+                        </tr></thead>
                         <tbody id="analisis-list"></tbody>
                     </table>
                 </div>
@@ -730,6 +762,19 @@
                     <div class="chart-card">
                         <h3>Composición último mes</h3>
                         <canvas id="chart-analisis-composicion" height="210"></canvas>
+                    </div>
+                </div>
+                <div class="table-card">
+                    <div class="table-card-header"><h3>Conceptos importantes</h3></div>
+                    <div class="concept-grid" style="padding:16px 20px 20px">
+                        <div class="concept-item"><strong>Ventas netas</strong><p>Total vendido en el período, después de cancelaciones o ajustes que correspondan.</p></div>
+                        <div class="concept-item"><strong>Ticket promedio</strong><p>Ventas netas divididas por cantidad vendida. Sirve para ver si el valor medio por pedido sube o baja.</p></div>
+                        <div class="concept-item"><strong>Utilidad bruta</strong><p>Ventas menos costo de productos. Es uno de los indicadores más importantes para saber si el negocio vende con margen.</p></div>
+                        <div class="concept-item"><strong>Margen bruto</strong><p>Utilidad bruta sobre ventas. Permite comparar meses aunque vendan montos distintos.</p></div>
+                        <div class="concept-item"><strong>Publicidad</strong><p>Gasto destinado a generar ventas. Conviene mirarlo contra ventas y utilidad, no aislado.</p></div>
+                        <div class="concept-item"><strong>Saldo de caja</strong><p>Diferencia entre ingresos y egresos de caja del mes. Si es negativo, salió más plata de la que entró.</p></div>
+                        <div class="concept-item"><strong>Activo</strong><p>Recursos de la empresa: caja, bancos, inventario, cuentas por cobrar y activos fijos.</p></div>
+                        <div class="concept-item"><strong>Pasivo</strong><p>Obligaciones o deudas: créditos, tarjetas, proveedores u otros compromisos pendientes.</p></div>
                     </div>
                 </div>
             </div>
@@ -762,6 +807,11 @@
                                 <div class="form-group"><label>Crédito</label><input type="text" inputmode="decimal" id="ef-credito" onblur="evalMonto(this)"></div>
                                 <div class="form-group"><label>Tarjetas de crédito</label><input type="text" inputmode="decimal" id="ef-tarjetas" onblur="evalMonto(this)"></div>
                             </div>
+                            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:16px 0 8px">
+                                <h3 style="margin:0">Activos fijos adicionales</h3>
+                                <button type="button" class="btn btn-outline btn-sm" onclick="addFixedAssetInput()">Agregar activo fijo</button>
+                            </div>
+                            <div id="ef-fixed-assets"></div>
                         </div>
                         <div class="analysis-form-block">
                             <h3>Flujo de caja</h3>
@@ -2202,6 +2252,7 @@ const FINANCIAL_DETAIL_SHEETS = {"2025-04":{"Balance General":[["","BALANCE MENS
 let customFinancials = JSON.parse(localStorage.getItem('hc_estados_financieros') || '[]');
 let activeFinancialPeriod = '';
 let activeFinancialSheet = 'Estado de Resultado';
+let analisisSort = { col: 'periodo', dir: 'desc' };
 
 function allFinancials() {
     const byPeriod = {};
@@ -2230,6 +2281,32 @@ function clearEstadoFinancieroForm() {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
+    const fixedWrap = document.getElementById('ef-fixed-assets');
+    if (fixedWrap) fixedWrap.innerHTML = '';
+}
+
+function addFixedAssetInput(name, amount) {
+    const wrap = document.getElementById('ef-fixed-assets');
+    if (!wrap) return;
+    const id = uid();
+    const row = document.createElement('div');
+    row.className = 'form-grid';
+    row.style.marginBottom = '8px';
+    row.setAttribute('data-fixed-asset-row', id);
+    row.innerHTML = ''
+        + '<div class="form-group"><label>Nombre del activo</label><input type="text" class="ef-fixed-asset-name" placeholder="Ej: notebook, estantería, maquinaria" value="' + escapeHtml(name || '') + '"></div>'
+        + '<div class="form-group"><label>Monto</label><input type="text" inputmode="decimal" class="ef-fixed-asset-amount" placeholder="Ej: 250000" onblur="evalMonto(this)" value="' + (amount ? amount : '') + '"></div>'
+        + '<div class="form-group"><label>Acción</label><button type="button" class="btn btn-ghost btn-sm" onclick="this.closest(\'[data-fixed-asset-row]\').remove()">Eliminar</button></div>';
+    wrap.appendChild(row);
+}
+
+function getFixedAssetInputs() {
+    return Array.from(document.querySelectorAll('[data-fixed-asset-row]')).map(row => {
+        return {
+            name: row.querySelector('.ef-fixed-asset-name')?.value.trim() || '',
+            amount: parseMoneyInput(row.querySelector('.ef-fixed-asset-amount')?.value || '')
+        };
+    }).filter(x => x.name || x.amount);
 }
 
 function saveEstadoFinanciero(e) {
@@ -2249,6 +2326,7 @@ function saveEstadoFinanciero(e) {
     const inventario = parseMoneyInput(document.getElementById('ef-inventario').value);
     const credito = parseMoneyInput(document.getElementById('ef-credito').value);
     const tarjetas = parseMoneyInput(document.getElementById('ef-tarjetas').value);
+    const activosFijos = getFixedAssetInputs();
     const ingresosCaja = parseMoneyInput(document.getElementById('ef-ingresos-caja').value);
     const egresosCaja = parseMoneyInput(document.getElementById('ef-egresos-caja').value);
     if (!periodo || !ventas || !cantidad) { alert('Cargá al menos mes, ventas y cantidad.'); return; }
@@ -2278,6 +2356,7 @@ function saveEstadoFinanciero(e) {
         inventario,
         credito,
         tarjetas,
+        activosFijos,
         margenBruto: ventas ? utilidadBruta / ventas : 0,
         manual: true
     };
@@ -2309,13 +2388,15 @@ function renderAnalisis() {
 function renderAnalisisHistorico() {
     const yearSel = document.getElementById('analisis-year');
     const year = yearSel ? yearSel.value : '';
-    const items = allFinancials().filter(x => !year || String(x.year) === year);
-    const last = items[items.length - 1];
-    const prev = items[items.length - 2];
-    const totalVentas = items.reduce((s,x) => s + Number(x.ventas || 0), 0);
-    const totalCantidad = items.reduce((s,x) => s + Number(x.cantidad || 0), 0);
-    const avgMargin = items.length ? items.reduce((s,x) => s + Number(x.margenBruto || 0), 0) / items.length : 0;
-    const best = items.slice().sort((a,b) => Number(b.ventas || 0) - Number(a.ventas || 0))[0];
+    const baseItems = allFinancials().filter(x => !year || String(x.year) === year);
+    const chronologicalItems = baseItems.slice().sort((a,b) => String(a.periodo).localeCompare(String(b.periodo)));
+    const items = sortAnalisisItems(baseItems);
+    const last = chronologicalItems[chronologicalItems.length - 1];
+    const prev = chronologicalItems[chronologicalItems.length - 2];
+    const totalVentas = chronologicalItems.reduce((s,x) => s + Number(x.ventas || 0), 0);
+    const totalCantidad = chronologicalItems.reduce((s,x) => s + Number(x.cantidad || 0), 0);
+    const avgMargin = chronologicalItems.length ? chronologicalItems.reduce((s,x) => s + Number(x.margenBruto || 0), 0) / chronologicalItems.length : 0;
+    const best = chronologicalItems.slice().sort((a,b) => Number(b.ventas || 0) - Number(a.ventas || 0))[0];
     const deltaVentas = last && prev && prev.ventas ? (last.ventas - prev.ventas) / prev.ventas : 0;
     const rango = document.getElementById('analisis-rango');
     if (rango) rango.textContent = items.length ? items.length + ' estados financieros cargados' : 'sin datos para ese año';
@@ -2329,7 +2410,8 @@ function renderAnalisisHistorico() {
     }
     const tbody = document.getElementById('analisis-list');
     if (!tbody) return;
-    tbody.innerHTML = items.length ? items.slice().reverse().map(x => {
+    updateAnalisisSortHeaders();
+    tbody.innerHTML = items.length ? items.map(x => {
         return '<tr class="financial-row" ondblclick="openFinancialDetail(\'' + x.periodo + '\')" title="Doble clic para abrir detalle">'
             + '<td style="font-weight:700;color:var(--gray-800)">' + monthLabel(x.periodo) + (x.manual ? ' <span class="badge badge-blue">manual</span>' : '') + '</td>'
             + '<td class="amount-pos">' + fmt(x.ventas) + '</td>'
@@ -2342,7 +2424,34 @@ function renderAnalisisHistorico() {
             + '<td><button type="button" class="btn btn-outline btn-sm" onclick="openFinancialDetail(\'' + x.periodo + '\')">Abrir</button></td>'
             + '</tr>';
     }).join('') : '<tr class="empty-row"><td colspan="9">Sin estados financieros para mostrar</td></tr>';
-    renderAnalisisCharts(items);
+    renderAnalisisCharts(chronologicalItems);
+}
+
+function sortAnalisis(col) {
+    if (analisisSort.col === col) {
+        analisisSort.dir = analisisSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+        analisisSort = { col, dir: col === 'periodo' ? 'desc' : 'desc' };
+    }
+    renderAnalisisHistorico();
+}
+
+function sortAnalisisItems(items) {
+    const col = analisisSort.col || 'periodo';
+    const dir = analisisSort.dir === 'asc' ? 1 : -1;
+    return items.slice().sort((a,b) => {
+        const av = col === 'periodo' ? String(a.periodo || '') : Number(a[col] || 0);
+        const bv = col === 'periodo' ? String(b.periodo || '') : Number(b[col] || 0);
+        if (av < bv) return -1 * dir;
+        if (av > bv) return 1 * dir;
+        return String(b.periodo || '').localeCompare(String(a.periodo || ''));
+    });
+}
+
+function updateAnalisisSortHeaders() {
+    document.querySelectorAll('#analysis-tab-historico th.sortable').forEach(th => th.classList.remove('asc', 'desc'));
+    const active = document.getElementById('sa-' + analisisSort.col);
+    if (active) active.classList.add(analisisSort.dir);
 }
 
 function renderAnalisisCharts(items) {
@@ -2387,6 +2496,11 @@ function financialDetailFor(periodo) {
     if (FINANCIAL_DETAIL_SHEETS[periodo]) return FINANCIAL_DETAIL_SHEETS[periodo];
     const item = allFinancials().find(x => x.periodo === periodo);
     if (!item) return {};
+    const fixedAssets = Array.isArray(item.activosFijos) ? item.activosFijos : [];
+    const totalActivoFijo = fixedAssets.reduce((s,x) => s + Number(x.amount || 0), 0);
+    const totalActivoCirculante = (item.caja || 0) + (item.bancos || 0) + (item.cuentasPorCobrar || 0) + (item.inventario || 0);
+    const totalPasivoCirculante = (item.credito || 0) + (item.tarjetas || 0);
+    const totalActivo = totalActivoCirculante + totalActivoFijo;
     return {
         'Estado de Resultado': [
             ['Concepto', 'Cant', 'Prom', 'Total'],
@@ -2410,13 +2524,18 @@ function financialDetailFor(periodo) {
         'Balance General': [
             ['ACTIVO', '', 'PASIVO', ''],
             ['Activo Circulante', '', 'Pasivo Circulante', ''],
-            ['Caja (Efectivo)', item.caja || 0],
-            ['Bancos', item.bancos || 0],
+            ['Caja (Efectivo)', item.caja || 0, 'Credito', item.credito || 0],
+            ['Bancos', item.bancos || 0, 'Tarjetas de Crédito', item.tarjetas || 0],
             ['Cuentas por cobrar', item.cuentasPorCobrar || 0],
             ['Inventario', item.inventario || 0],
-            ['Total Activo Circulante', (item.caja || 0) + (item.bancos || 0) + (item.cuentasPorCobrar || 0) + (item.inventario || 0), 'Total Pasivo Circulante', (item.credito || 0) + (item.tarjetas || 0)],
-            ['', '', 'Credito', item.credito || 0],
-            ['', '', 'Tarjetas de Crédito', item.tarjetas || 0]
+            ['Total Activo Circulante', totalActivoCirculante, 'Total Pasivo Circulante', totalPasivoCirculante],
+            ['Activo Fijo', '', 'Pasivo a Largo Plazo', ''],
+            ...fixedAssets.map(x => [x.name || 'Activo fijo', Number(x.amount || 0)]),
+            ['Total Activo Fijo', totalActivoFijo, 'Total Pasivo a Largo Plazo', 0],
+            ['Activo Diferido', '', 'CAPITAL CONTABLE', ''],
+            ['Total Activo Diferido', 0, 'Capital Social', totalActivo - totalPasivoCirculante],
+            ['SUMA DEL ACTIVO', totalActivo, 'Total Capital Contable', totalActivo - totalPasivoCirculante],
+            ['', '', 'PASIVO + CAPITAL CONTABLE', totalActivo]
         ]
     };
 }
@@ -2462,9 +2581,100 @@ function renderFinancialDetailTable() {
         wrap.innerHTML = '<div style="padding:18px;color:var(--gray-500)">Sin detalle disponible para esta hoja.</div>';
         return;
     }
+    if (activeFinancialSheet === 'Balance General') {
+        wrap.innerHTML = renderBalanceSheetView(rows);
+        return;
+    }
     wrap.innerHTML = '<table><tbody>' + rows.map((row, idx) => {
         return '<tr class="' + financialRowClass(row, idx) + '">' + row.map(cell => '<td class="' + financialCellClass(cell, row) + '">' + formatFinancialCell(cell) + '</td>').join('') + '</tr>';
     }).join('') + '</tbody></table>';
+}
+
+function renderBalanceSheetView(rows) {
+    const parsed = parseBalanceRows(rows || []);
+    return '<div class="balance-sheet-view"><div class="balance-sheet-grid">'
+        + '<div class="balance-title">Balance mensual de Incognito</div>'
+        + '<div class="balance-col left"><div class="balance-col-title">Activo</div>'
+        + renderBalanceSection('Activo Circulante', parsed.left['Activo Circulante'])
+        + renderBalanceSection('Activo Fijo', parsed.left['Activo Fijo'])
+        + renderBalanceSection('Activo Diferido', parsed.left['Activo Diferido'])
+        + renderBalanceLine('SUMA DEL ACTIVO', parsed.sumaActivo, 'sum')
+        + '</div>'
+        + '<div class="balance-col right"><div class="balance-col-title">Pasivo</div>'
+        + renderBalanceSection('Pasivo Circulante', parsed.right['Pasivo Circulante'])
+        + renderBalanceSection('Pasivo a Largo Plazo', parsed.right['Pasivo a Largo Plazo'])
+        + renderBalanceSection('CAPITAL CONTABLE', parsed.right['CAPITAL CONTABLE'])
+        + renderBalanceLine('SUMA DEL PASIVO', parsed.sumaPasivo, 'sum')
+        + renderBalanceLine('SUMA DEL CAPITAL CONTABLE', parsed.sumaCapital, 'sum')
+        + renderBalanceLine('PASIVO + CAPITAL CONTABLE', parsed.pasivoCapital, 'sum')
+        + '</div>'
+        + '<div class="balance-check"><div class="balance-check-main">ACTIVO= PASIVO+CAPITAL CONTABLE</div><div class="balance-check-status">' + (parsed.correcto || 'CORRECTO') + '</div></div>'
+        + '</div></div>';
+}
+
+function parseBalanceRows(rows) {
+    const result = { left:{}, right:{}, sumaActivo:0, sumaPasivo:0, sumaCapital:0, pasivoCapital:0, correcto:'CORRECTO' };
+    let leftSection = '', rightSection = '';
+    rows.forEach(row => {
+        const cells = row || [];
+        const leftLabel = String((cells[1] !== undefined && cells[1] !== '') ? cells[1] : cells[0] || '').trim();
+        const rightLabel = String((cells[5] !== undefined && cells[5] !== '') ? cells[5] : cells[2] || '').trim();
+        const fullText = cells.join(' ');
+        const leftAmount = firstNumber([cells[3], cells[1], cells[2], cells[4]]);
+        const rightAmount = firstNumber([cells[7], cells[3], cells[6], cells[8]]);
+        if (/^Activo Circulante$/i.test(leftLabel)) { leftSection = 'Activo Circulante'; result.left[leftSection] = result.left[leftSection] || []; return; }
+        if (/^Activo Fijo$/i.test(leftLabel)) { leftSection = 'Activo Fijo'; result.left[leftSection] = result.left[leftSection] || []; return; }
+        if (/^Activo Diferido$/i.test(leftLabel)) { leftSection = 'Activo Diferido'; result.left[leftSection] = result.left[leftSection] || []; return; }
+        if (/^Pasivo Circulante$/i.test(rightLabel)) { rightSection = 'Pasivo Circulante'; result.right[rightSection] = result.right[rightSection] || []; }
+        if (/^Pasivo a Largo Plazo$/i.test(rightLabel)) { rightSection = 'Pasivo a Largo Plazo'; result.right[rightSection] = result.right[rightSection] || []; }
+        if (/^CAPITAL CONTABLE$/i.test(rightLabel)) { rightSection = 'CAPITAL CONTABLE'; result.right[rightSection] = result.right[rightSection] || []; }
+        if (/SUMA DEL ACTIVO/i.test(leftLabel) && leftAmount !== null) result.sumaActivo = leftAmount;
+        if (/SUMA DEL PASIVO/i.test(rightLabel) && rightAmount !== null) result.sumaPasivo = rightAmount;
+        if (/SUMA DEL CAPITAL CONTABLE/i.test(rightLabel) && rightAmount !== null) result.sumaCapital = rightAmount;
+        if (/PASIVO \+ CAPITAL CONTABLE/i.test(rightLabel) && rightAmount !== null) result.pasivoCapital = rightAmount;
+        if (/INCORRECTO/i.test(fullText)) result.correcto = 'INCORRECTO';
+        else if (/CORRECTO/i.test(fullText)) result.correcto = 'CORRECTO';
+        if (leftSection && leftLabel && !isBalanceHeading(leftLabel) && !/SUMA DEL ACTIVO|ACTIVO=|CORRECTO/i.test(leftLabel)) {
+            addBalanceItem(result.left, leftSection, leftLabel, leftAmount);
+        }
+        if (rightSection && rightLabel && !isBalanceHeading(rightLabel) && !/SUMA DEL PASIVO|SUMA DEL CAPITAL|PASIVO \+ CAPITAL/i.test(rightLabel)) {
+            addBalanceItem(result.right, rightSection, rightLabel, rightAmount);
+        }
+    });
+    return result;
+}
+
+function firstNumber(values) {
+    for (const v of values) if (typeof v === 'number' && isFinite(v)) return v;
+    return null;
+}
+
+function isBalanceHeading(label) {
+    return /^(ACTIVO|PASIVO|Activo Circulante|Activo Fijo|Activo Diferido|Pasivo Circulante|Pasivo a Largo Plazo|CAPITAL CONTABLE)$/i.test(String(label || '').trim());
+}
+
+function addBalanceItem(target, section, label, amount) {
+    target[section] = target[section] || [];
+    if (target[section].some(x => x.label === label && x.amount === amount)) return;
+    target[section].push({ label, amount: amount === null ? 0 : amount, total: /^Total|^SUMA|PASIVO \+/i.test(label) });
+}
+
+function renderBalanceSection(title, items) {
+    items = items || [];
+    return '<div class="balance-section"><div class="balance-section-title">' + escapeHtml(title) + '</div>'
+        + (items.length ? items.map(item => renderBalanceLine(item.label, item.amount, item.total ? 'total' : '')).join('') : renderBalanceLine('Total ' + title, 0, 'total'))
+        + '</div>';
+}
+
+function renderBalanceLine(label, amount, kind) {
+    const cls = kind === 'sum' ? 'balance-sum' : (kind === 'total' ? 'balance-total' : 'balance-line');
+    return '<div class="' + cls + '"><span>' + escapeHtml(label) + '</span><span class="money-sign">$</span><span class="balance-amount">' + formatBalanceAmount(amount) + '</span></div>';
+}
+
+function formatBalanceAmount(value) {
+    const n = Number(value || 0);
+    if (!n) return '-';
+    return (n < 0 ? '-' : '') + Math.abs(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function financialRowClass(row, idx) {
