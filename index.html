@@ -2925,8 +2925,26 @@ function mpMovMarker(m) {
 
 function mpMovimientoExiste(m) {
     var marker = mpMovMarker(m);
-    return transactions.some(function(t){ return String(t.descripcion || '').indexOf(marker) >= 0; })
-        || transfers.some(function(t){ return String(t.descripcion || '').indexOf(marker) >= 0; });
+    var descKey = mpComparableDesc(m.descripcionEditable || m.descripcionFinal || m.descripcion || '');
+    var cuenta = m.cuenta || 'MP FB';
+    var egreso = Number(m.egreso || 0);
+    var ingreso = Number(m.ingreso || 0);
+    var montoTransferencia = egreso || Math.abs(Number(m.amount || 0));
+
+    function mismaFechaYCategoria(texto, fecha) {
+        return fecha === m.fecha && descKey && mpComparableDesc(texto) === descKey;
+    }
+
+    return transactions.some(function(t){
+            if (String(t.descripcion || '').indexOf(marker) >= 0) return true;
+            if ((t.cuenta || '') !== cuenta || !mismaFechaYCategoria(t.descripcion || '', t.fecha)) return false;
+            return sameMpAmount(t.egreso, egreso) && sameMpAmount(t.ingreso, ingreso);
+        })
+        || transfers.some(function(t){
+            if (String(t.descripcion || '').indexOf(marker) >= 0) return true;
+            if ((t.origen || '') !== cuenta || !mismaFechaYCategoria(t.descripcion || '', t.fecha)) return false;
+            return sameMpAmount(t.monto, montoTransferencia);
+        });
 }
 
 function descripcionMpMovimiento(m) {
@@ -2948,6 +2966,28 @@ function stripMpMarkerText(value) {
         .replace(/\s*\|\s*MPMOV\s+[A-Z_]+\s*\|\s*\d+\s*$/i, '')
         .replace(/\s*\|\s*\d{8,}\s*$/i, '')
         .trim();
+}
+
+function normalizeMpMovementText(value) {
+    return stripMpMarkerText(value)
+        .toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function mpComparableDesc(value) {
+    var text = normalizeMpMovementText(value);
+    if (text.indexOf('andreani') >= 0 || text.indexOf('paquetes') >= 0) return 'andreani';
+    if (text.indexOf('correo argentino') >= 0 || text.indexOf('micorreo') >= 0 || text.indexOf('mi correo') >= 0) return 'correo argentino';
+    if (text.indexOf('rendimiento') >= 0 || text.indexOf('credito mercado pago') >= 0 || text.indexOf('asset_management') >= 0) return 'rendimientos';
+    if (text.indexOf('retiro mercado pago') >= 0 || text.indexOf('payout') >= 0) return 'retiro mercado pago';
+    if (text.indexOf('transferencia enviada') >= 0 || text.indexOf('intra mp') >= 0) return 'transferencia enviada mercado pago';
+    return text;
+}
+
+function sameMpAmount(a, b) {
+    return Math.abs(Number(a || 0) - Number(b || 0)) < 0.01;
 }
 
 function normalizeMpCategoryName(value) {
