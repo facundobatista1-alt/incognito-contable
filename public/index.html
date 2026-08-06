@@ -685,6 +685,11 @@
                 <p>Control mensual de compromisos recurrentes</p>
             </div>
             <div class="kpi-row" id="gf-resumen"></div>
+            <div class="filters-bar" style="margin-bottom:20px">
+                <label for="gf-usd-rate" style="font-weight:600;color:var(--gray-700)">Dólar tarjeta estimado</label>
+                <input type="text" inputmode="decimal" id="gf-usd-rate" placeholder="Ej: 1500" onblur="saveFixedUsdRate()" onkeydown="if(event.key==='Enter'){event.preventDefault();saveFixedUsdRate();this.blur();}" style="width:130px">
+                <span id="gf-usd-rate-note" style="color:var(--gray-500);font-size:.86rem"></span>
+            </div>
             <div class="form-card">
                 <form id="form-gasto-fijo" onsubmit="saveGastoFijo(event)">
                     <div class="form-grid">
@@ -2095,9 +2100,25 @@ if (!fixedExpenses.length && !localStorage.getItem('hc_gastos_fijos_seeded')) {
     localStorage.setItem('hc_gastos_fijos', JSON.stringify(fixedExpenses));
 }
 let editingGastoFijoId = null;
+let fixedUsdRate = parseFloat(localStorage.getItem('hc_gastos_fijos_usd_rate') || '0') || 0;
 
 function saveFixedExpenses() {
     localStorage.setItem('hc_gastos_fijos', JSON.stringify(fixedExpenses));
+}
+
+function saveFixedUsdRate() {
+    var input = document.getElementById('gf-usd-rate');
+    if (!input) return;
+    var value = parseMoneyInput(input.value);
+    fixedUsdRate = value > 0 ? value : 0;
+    if (fixedUsdRate) {
+        localStorage.setItem('hc_gastos_fijos_usd_rate', String(fixedUsdRate));
+        input.value = fixedUsdRate.toLocaleString('es-AR', { maximumFractionDigits: 2 });
+    } else {
+        localStorage.removeItem('hc_gastos_fijos_usd_rate');
+        input.value = '';
+    }
+    renderGastosFijos();
 }
 
 function parseMoneyInput(value) {
@@ -2208,6 +2229,8 @@ function renderGastosFijos() {
     const pausados = fixedExpenses.length - activos.length;
     const totalARS = activos.filter(x => (x.moneda || 'ARS') !== 'USD').reduce((s,x) => s + Number(x.monto || 0), 0);
     const totalUSD = activos.filter(x => (x.moneda || 'ARS') === 'USD').reduce((s,x) => s + Number(x.monto || 0), 0);
+    const usdRate = Number(fixedUsdRate || 0);
+    const totalEstimadoARS = totalARS + (usdRate > 0 ? totalUSD * usdRate : 0);
     const today = new Date();
     const todayDay = today.getDate();
     const proximos = activos.filter(x => {
@@ -2215,11 +2238,21 @@ function renderGastosFijos() {
         return day >= todayDay && day <= todayDay + 7;
     });
 
+    const rateInput = document.getElementById('gf-usd-rate');
+    if (rateInput && document.activeElement !== rateInput) {
+        rateInput.value = usdRate > 0 ? usdRate.toLocaleString('es-AR', { maximumFractionDigits: 2 }) : '';
+    }
+    const rateNote = document.getElementById('gf-usd-rate-note');
+    if (rateNote) {
+        rateNote.textContent = usdRate > 0 ? 'USD convertido a ' + fmt(usdRate) : 'cargalo para estimar el total en pesos';
+    }
+
     const resumen = document.getElementById('gf-resumen');
     if (resumen) {
         resumen.innerHTML = ''
             + '<div class="kpi-card"><div class="kpi-label">Total mensual ARS</div><div class="kpi-value red">' + fmt(totalARS) + '</div><div class="kpi-sub">' + activos.length + ' activos</div></div>'
-            + '<div class="kpi-card"><div class="kpi-label">Total mensual USD</div><div class="kpi-value purple">USD ' + totalUSD.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</div><div class="kpi-sub">sin convertir a pesos</div></div>'
+            + '<div class="kpi-card"><div class="kpi-label">Total mensual USD</div><div class="kpi-value purple">USD ' + totalUSD.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</div><div class="kpi-sub">' + (usdRate > 0 ? 'dólar tarjeta estimado ' + fmt(usdRate) : 'sin cotización cargada') + '</div></div>'
+            + '<div class="kpi-card"><div class="kpi-label">Total estimado en pesos</div><div class="kpi-value orange">' + (usdRate > 0 ? fmt(totalEstimadoARS) : '-') + '</div><div class="kpi-sub">ARS + USD convertido</div></div>'
             + '<div class="kpi-card"><div class="kpi-label">Próximos 7 días</div><div class="kpi-value orange">' + proximos.length + '</div><div class="kpi-sub">' + (proximos.length ? proximos.map(x => x.descripcion).join(', ') : 'sin vencimientos') + '</div></div>'
             + '<div class="kpi-card"><div class="kpi-label">Pausados</div><div class="kpi-value gray">' + pausados + '</div><div class="kpi-sub">no suman al total</div></div>';
     }
