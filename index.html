@@ -2905,7 +2905,7 @@ function getTodayISO() {
 
 function abrirMovimientosMp() {
     var today = getTodayISO();
-    var hasta = addDays(today, -1);
+    var hasta = today;
     var desde = addDays(hasta, -20);
     document.getElementById('mp-mov-desde').value = desde;
     document.getElementById('mp-mov-hasta').value = hasta;
