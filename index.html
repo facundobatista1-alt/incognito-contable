@@ -87,6 +87,7 @@
         .kpi-value.red    { color: var(--danger); }
         .kpi-value.purple { color: var(--primary); }
         .kpi-value.orange { color: #d97706; }
+        .kpi-value.blue   { color: #2563eb; }
         .kpi-value.gray   { color: var(--gray-700); }
         .kpi-sub { font-size: 0.75rem; color: var(--gray-500); margin-top: 3px; }
         .chart-card canvas { max-height: 260px; }
@@ -462,17 +463,9 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
             Entre cuentas
         </button>
-        <button class="nav-item" onclick="showPage('gastos', this)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>
-            Gastos
-        </button>
-        <button class="nav-item" onclick="showPage('gastosFijos', this)">
+        <button class="nav-item" onclick="showPage('analisis', this)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/></svg>
-            Gastos fijos
-        </button>
-        <button class="nav-item" onclick="showPage('ingresos', this)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-            Ingresos
+            Análisis
         </button>
         <button class="nav-item" onclick="showPage('historial', this)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
@@ -678,9 +671,30 @@
             </div>
         </div>
 
-        <!-- GASTOS FIJOS -->
-        <div id="page-gastosFijos" class="page">
+        <!-- ANALISIS -->
+        <div id="page-analisis" class="page">
             <div class="page-header">
+                <h2>Análisis</h2>
+                <p>Estados financieros, comparativas mensuales y compromisos recurrentes</p>
+            </div>
+            <div class="filters-bar" style="margin-bottom:18px">
+                <label for="analisis-year" style="font-weight:600;color:var(--gray-700)">Año</label>
+                <select id="analisis-year" onchange="renderAnalisisHistorico()" style="min-width:120px">
+                    <option value="">Todos</option>
+                    <option value="2026">2026</option>
+                    <option value="2025">2025</option>
+                </select>
+                <span id="analisis-rango" style="margin-left:auto;color:var(--gray-500);font-size:.86rem"></span>
+            </div>
+            <div class="kpi-row" id="analisis-kpis"></div>
+            <div class="table-card">
+                <div class="table-card-header"><h3>Estados financieros históricos</h3></div>
+                <table>
+                    <thead><tr><th>Mes</th><th>Ventas</th><th>Cant.</th><th>Ticket</th><th>Utilidad bruta</th><th>Margen</th><th>Publicidad</th><th>Saldo caja</th></tr></thead>
+                    <tbody id="analisis-list"></tbody>
+                </table>
+            </div>
+            <div class="page-header" style="margin-top:28px">
                 <h2>Gastos fijos</h2>
                 <p>Control mensual de compromisos recurrentes</p>
             </div>
@@ -1257,7 +1271,7 @@ function showPage(page, el) {
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     document.getElementById('page-' + page).classList.add('active');
     if (el) el.classList.add('active');
-    const renders = { dashboard: renderDashboard, historial: renderHistorial, gastos: renderGastos, gastosFijos: renderGastosFijos, ingresos: renderIngresos, transferencias: renderTransfers };
+    const renders = { dashboard: renderDashboard, historial: renderHistorial, gastos: renderGastos, analisis: renderAnalisis, gastosFijos: renderGastosFijos, ingresos: renderIngresos, transferencias: renderTransfers };
     if (renders[page]) renders[page]();
 }
 
@@ -1738,7 +1752,7 @@ async function saveTransfer(e) {
 function renderAll() {
     const active = document.querySelector('.page.active');
     const pageId = active ? active.id.replace('page-','') : 'dashboard';
-    const renders = { dashboard: renderDashboard, historial: renderHistorial, gastos: renderGastos, gastosFijos: renderGastosFijos, ingresos: renderIngresos, transfers: renderTransfers, transferencias: renderTransfers, caja: renderCaja };
+    const renders = { dashboard: renderDashboard, historial: renderHistorial, gastos: renderGastos, analisis: renderAnalisis, gastosFijos: renderGastosFijos, ingresos: renderIngresos, transfers: renderTransfers, transferencias: renderTransfers, caja: renderCaja };
     try {
         if (renders[pageId]) renders[pageId]();
         if (pageId !== 'dashboard') renderDashboard();
@@ -1757,7 +1771,7 @@ function deleteTx(id) {
     _del.add(id); localStorage.setItem('hc_deleted_tx', JSON.stringify([..._del]));
     if (sb) sb.from('transactions').delete().eq('id', id).then(() => {});
     const active = document.querySelector('.page.active').id.replace('page-','');
-    const renders = { dashboard: renderDashboard, historial: renderHistorial, gastos: renderGastos, ingresos: renderIngresos };
+    const renders = { dashboard: renderDashboard, historial: renderHistorial, gastos: renderGastos, analisis: renderAnalisis, ingresos: renderIngresos };
     if (renders[active]) renders[active]();
 }
 function deleteTr(id) {
@@ -2075,6 +2089,83 @@ function renderGastos() {
             <td class="amount-neg">${fmt(t.egreso)}</td>
             <td><button class="btn btn-ghost btn-sm" onclick="deleteTx('${t.id}')">Eliminar</button></td>
           </tr>`).join('');
+}
+
+// ══════════════════════════════════════════════════════
+// ANALISIS
+// ══════════════════════════════════════════════════════
+const HISTORICAL_FINANCIALS = [
+    { periodo:'2025-01', year:2025, month:1, ventas:15312041.8, cantidad:568, ticketPromedio:26957.82, costosProducto:7448300, utilidadBruta:2833676.58, envios:1606578.5, publicidad:3062858.75, ingresosCaja:21827647.07, egresosCaja:15714076.73, saldoCaja:6113570.34, caja:1606864.38, bancos:9557523.23, credito:9264000, margenBruto:0.1851 },
+    { periodo:'2025-02', year:2025, month:2, ventas:16871570.22, cantidad:588, ticketPromedio:28693.15, costosProducto:6884200, utilidadBruta:9987370.22, envios:2549189.3, publicidad:2059177.57, ingresosCaja:16752368.32, egresosCaja:17951742.32, saldoCaja:-1199374, caja:845000, bancos:9120013.61, credito:8492000, margenBruto:0.5920 },
+    { periodo:'2025-03', year:2025, month:3, ventas:8940741.8, cantidad:306, ticketPromedio:29218.11, costosProducto:3980500, utilidadBruta:4960241.8, envios:1121744.9, publicidad:3321885, ingresosCaja:8784395.51, egresosCaja:9957402.44, saldoCaja:-1173006.93, caja:400000, bancos:8392006.68, credito:7720000, margenBruto:0.5548 },
+    { periodo:'2025-04', year:2025, month:4, ventas:11463895.52, cantidad:352, ticketPromedio:32567.89, costosProducto:5786200, utilidadBruta:5677695.52, envios:1403797.1, publicidad:2028048, ingresosCaja:11731230.84, egresosCaja:15058179.61, saldoCaja:-3326948.77, caja:528506, bancos:5327837.91, credito:6948000, margenBruto:0.4953 },
+    { periodo:'2025-05', year:2025, month:5, ventas:10349177.44, cantidad:308, ticketPromedio:33601.23, costosProducto:5065400, utilidadBruta:5283777.44, envios:1308533.8, publicidad:1806000, ingresosCaja:10925995.09, egresosCaja:13077316.9, saldoCaja:-2151321.81, caja:250000, bancos:3461936.09, credito:6176000, margenBruto:0.5106 },
+    { periodo:'2025-06', year:2025, month:6, ventas:11464607.95, cantidad:325, ticketPromedio:35275.72, costosProducto:5538600, utilidadBruta:5926007.95, envios:1256294.4, publicidad:1584396.33, ingresosCaja:11917725.04, egresosCaja:12868229, saldoCaja:-950503.96, caja:185000, bancos:2766374.13, credito:4487380.45, margenBruto:0.5169 },
+    { periodo:'2025-07', year:2025, month:7, ventas:13383516.55, cantidad:426, ticketPromedio:31416.71, costosProducto:6512600, utilidadBruta:6870916.55, envios:1409124.6, publicidad:1757503.88, ingresosCaja:13868431.65, egresosCaja:13715927.56, saldoCaja:152504.09, caja:570000, bancos:2772703.22, credito:3943831.61, margenBruto:0.5134 },
+    { periodo:'2025-08', year:2025, month:8, ventas:11207351.98, cantidad:334, ticketPromedio:33554.95, costosProducto:4952200, utilidadBruta:6255151.98, envios:1434767.1, publicidad:1504354.3, ingresosCaja:10961235.64, egresosCaja:12046835.74, saldoCaja:-1085600.1, caja:499089, bancos:2907399.12, credito:3343060.47, margenBruto:0.5581 },
+    { periodo:'2025-09', year:2025, month:9, ventas:11915820.37, cantidad:351, ticketPromedio:33948.21, costosProducto:5373500, utilidadBruta:6542320.37, envios:1398873.5, publicidad:1609157.6, ingresosCaja:11594682.99, egresosCaja:11920774.93, saldoCaja:-326091.94, caja:776355.68, bancos:1823920.5, credito:2739281.78, margenBruto:0.5490 },
+    { periodo:'2025-10', year:2025, month:10, ventas:10857871.08, cantidad:314, ticketPromedio:34579.21, costosProducto:4271300, utilidadBruta:6586571.08, envios:1371271.4, publicidad:1259995.25, ingresosCaja:11050465.93, egresosCaja:9890166.09, saldoCaja:1160299.84, caja:1137580.14, bancos:2740995.88, credito:2090395.73, margenBruto:0.6066 },
+    { periodo:'2025-11', year:2025, month:11, ventas:11013390.37, cantidad:347, ticketPromedio:31738.88, costosProducto:4309000, utilidadBruta:6704390.37, envios:1441717.3, publicidad:1329255, ingresosCaja:10917756.07, egresosCaja:10550252.85, saldoCaja:367503.22, caja:690713.83, bancos:3701352.42, credito:1416238.73, margenBruto:0.6087 },
+    { periodo:'2025-12', year:2025, month:12, ventas:10857184.92, cantidad:430, ticketPromedio:25249.27, costosProducto:4350400, utilidadBruta:6506784.92, envios:1610008.9, publicidad:1700000, ingresosCaja:11029115.54, egresosCaja:11911120.94, saldoCaja:-882005.4, caja:2145588, bancos:1273945.84, credito:708119.37, margenBruto:0.5993 },
+    { periodo:'2026-01', year:2026, month:1, ventas:15253832.01, cantidad:613, ticketPromedio:24883.9, costosProducto:6319400, utilidadBruta:8934432.01, envios:2207997.4, publicidad:2152025, ingresosCaja:15539454.96, egresosCaja:16461356.73, saldoCaja:-921901.77, caja:1789859.58, bancos:707772.49, credito:0, margenBruto:0.5857 },
+    { periodo:'2026-02', year:2026, month:2, ventas:16589062.74, cantidad:635, ticketPromedio:26124.51, costosProducto:6582900, utilidadBruta:10006162.74, envios:2298747.8, publicidad:2130000, ingresosCaja:15832995.89, egresosCaja:14945931.71, saldoCaja:887064.18, caja:936800, bancos:2447896.25, credito:0, margenBruto:0.6032 },
+    { periodo:'2026-03', year:2026, month:3, ventas:20937428.1, cantidad:730, ticketPromedio:28681.41, costosProducto:9793000, utilidadBruta:11144428.1, envios:2555145, publicidad:1700000, ingresosCaja:20165142.56, egresosCaja:18861664.07, saldoCaja:1303478.49, caja:1675547, bancos:3454320.74, credito:0, margenBruto:0.5323 },
+    { periodo:'2026-04', year:2026, month:4, ventas:25867835, cantidad:849, ticketPromedio:30468.59, costosProducto:12316700, utilidadBruta:13551135, envios:3249864, publicidad:2100000, ingresosCaja:24125150, egresosCaja:23667531, saldoCaja:457619, caja:177300, bancos:4259155, credito:0, margenBruto:0.5239 },
+    { periodo:'2026-05', year:2026, month:5, ventas:30251806.03, cantidad:928, ticketPromedio:32598.93, costosProducto:13611500, utilidadBruta:16640306.03, envios:3993257.91, publicidad:2085000, ingresosCaja:32707368, egresosCaja:29113003, saldoCaja:3594365, caja:1503000, bancos:7601080, credito:0, margenBruto:0.5501 },
+    { periodo:'2026-06', year:2026, month:6, ventas:32385848.62, cantidad:1095, ticketPromedio:29576.12, costosProducto:15991600, utilidadBruta:16394248.62, envios:4757487, publicidad:2284377, ingresosCaja:37736770, egresosCaja:33343556, saldoCaja:4393214, caja:4199789, bancos:11405490, credito:0, margenBruto:0.5062 }
+];
+
+function fmtPct(n) {
+    return (Number(n || 0) * 100).toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+}
+
+function monthLabel(periodo) {
+    const monthNames = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    const parts = String(periodo || '').split('-');
+    const month = parseInt(parts[1], 10);
+    return (monthNames[month - 1] || parts[1]) + ' ' + parts[0];
+}
+
+function renderAnalisis() {
+    renderAnalisisHistorico();
+    renderGastosFijos();
+}
+
+function renderAnalisisHistorico() {
+    const yearSel = document.getElementById('analisis-year');
+    const year = yearSel ? yearSel.value : '';
+    const items = HISTORICAL_FINANCIALS.filter(x => !year || String(x.year) === year);
+    const last = items[items.length - 1];
+    const prev = items[items.length - 2];
+    const totalVentas = items.reduce((s,x) => s + Number(x.ventas || 0), 0);
+    const totalCantidad = items.reduce((s,x) => s + Number(x.cantidad || 0), 0);
+    const avgMargin = items.length ? items.reduce((s,x) => s + Number(x.margenBruto || 0), 0) / items.length : 0;
+    const best = items.slice().sort((a,b) => Number(b.ventas || 0) - Number(a.ventas || 0))[0];
+    const deltaVentas = last && prev && prev.ventas ? (last.ventas - prev.ventas) / prev.ventas : 0;
+    const rango = document.getElementById('analisis-rango');
+    if (rango) rango.textContent = items.length ? items.length + ' estados financieros cargados' : 'sin datos para ese año';
+    const kpis = document.getElementById('analisis-kpis');
+    if (kpis) {
+        kpis.innerHTML = ''
+            + '<div class="kpi-card"><div class="kpi-label">Ventas históricas</div><div class="kpi-value green">' + fmt(totalVentas) + '</div><div class="kpi-sub">' + totalCantidad.toLocaleString('es-AR') + ' ventas</div></div>'
+            + '<div class="kpi-card"><div class="kpi-label">Último mes</div><div class="kpi-value purple">' + (last ? fmt(last.ventas) : '-') + '</div><div class="kpi-sub">' + (last ? monthLabel(last.periodo) + ' · ' + (deltaVentas ? fmtPct(deltaVentas) + ' vs anterior' : 'sin comparativo') : '-') + '</div></div>'
+            + '<div class="kpi-card"><div class="kpi-label">Mejor mes</div><div class="kpi-value blue">' + (best ? monthLabel(best.periodo) : '-') + '</div><div class="kpi-sub">' + (best ? fmt(best.ventas) : '-') + '</div></div>'
+            + '<div class="kpi-card"><div class="kpi-label">Margen bruto prom.</div><div class="kpi-value orange">' + fmtPct(avgMargin) + '</div><div class="kpi-sub">promedio mensual histórico</div></div>';
+    }
+    const tbody = document.getElementById('analisis-list');
+    if (!tbody) return;
+    tbody.innerHTML = items.length ? items.slice().reverse().map(x => {
+        return '<tr>'
+            + '<td style="font-weight:700;color:var(--gray-800)">' + monthLabel(x.periodo) + '</td>'
+            + '<td class="amount-pos">' + fmt(x.ventas) + '</td>'
+            + '<td>' + Number(x.cantidad || 0).toLocaleString('es-AR') + '</td>'
+            + '<td>' + fmt(x.ticketPromedio) + '</td>'
+            + '<td class="amount-pos">' + fmt(x.utilidadBruta) + '</td>'
+            + '<td>' + fmtPct(x.margenBruto) + '</td>'
+            + '<td class="amount-neg">' + fmt(x.publicidad) + '</td>'
+            + '<td class="' + (x.saldoCaja >= 0 ? 'amount-pos' : 'amount-neg') + '">' + fmtSigned(x.saldoCaja) + '</td>'
+            + '</tr>';
+    }).join('') : '<tr class="empty-row"><td colspan="8">Sin estados financieros para mostrar</td></tr>';
 }
 
 // ══════════════════════════════════════════════════════
