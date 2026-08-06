@@ -68,7 +68,15 @@
         .sheet-table-wrap { overflow:auto; border:1px solid var(--gray-200); border-radius:8px; max-height:58vh; }
         .sheet-table-wrap table { min-width:760px; }
         .sheet-table-wrap td { padding:7px 9px; border-bottom:1px solid var(--gray-100); vertical-align:top; }
-        .sheet-table-wrap tr:first-child td { font-weight:800; color:var(--gray-900); background:#f8fafc; }
+        .sheet-table-wrap tr:first-child td, .sheet-row-title td { font-weight:800; color:var(--gray-900); background:#f8fafc; }
+        .sheet-row-section td { font-weight:800; color:var(--primary-dark); background:var(--primary-light); }
+        .sheet-row-total td { font-weight:800; border-top:2px solid var(--gray-300); background:#fafafa; }
+        .sheet-cell-pos { color:#15803d; font-weight:700; }
+        .sheet-cell-neg { color:var(--danger); font-weight:700; }
+        .analysis-chart-grid { display:grid; grid-template-columns:2fr 1fr; gap:18px; margin-top:18px; }
+        @media (max-width:900px) { .analysis-chart-grid { grid-template-columns:1fr; } }
+        .analysis-form-block { border:1px solid var(--gray-200); border-radius:8px; padding:16px; margin-bottom:16px; }
+        .analysis-form-block h3 { font-size:.95rem; color:var(--gray-900); margin-bottom:12px; }
 
         /* ── SORTABLE HEADERS ── */
         th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
@@ -714,19 +722,53 @@
                         <tbody id="analisis-list"></tbody>
                     </table>
                 </div>
+                <div class="analysis-chart-grid">
+                    <div class="chart-card">
+                        <h3>Evolución mensual</h3>
+                        <canvas id="chart-analisis-evolucion" height="130"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Composición último mes</h3>
+                        <canvas id="chart-analisis-composicion" height="210"></canvas>
+                    </div>
+                </div>
             </div>
             <div id="analysis-tab-cargar" class="analysis-section">
                 <div class="form-card">
                     <form id="form-estado-financiero" onsubmit="saveEstadoFinanciero(event)">
-                        <div class="form-grid">
+                        <div class="form-grid" style="margin-bottom:16px">
                             <div class="form-group"><label>Mes</label><input type="month" id="ef-periodo" required></div>
-                            <div class="form-group"><label>Ventas</label><input type="text" inputmode="decimal" id="ef-ventas" required onblur="evalMonto(this)"></div>
-                            <div class="form-group"><label>Cantidad vendida</label><input type="text" inputmode="decimal" id="ef-cantidad" required></div>
-                            <div class="form-group"><label>Costos de productos</label><input type="text" inputmode="decimal" id="ef-costos" onblur="evalMonto(this)"></div>
-                            <div class="form-group"><label>Costo de envíos</label><input type="text" inputmode="decimal" id="ef-envios" onblur="evalMonto(this)"></div>
-                            <div class="form-group"><label>Publicidad</label><input type="text" inputmode="decimal" id="ef-publicidad" onblur="evalMonto(this)"></div>
-                            <div class="form-group"><label>Ingresos caja</label><input type="text" inputmode="decimal" id="ef-ingresos-caja" onblur="evalMonto(this)"></div>
-                            <div class="form-group"><label>Egresos caja</label><input type="text" inputmode="decimal" id="ef-egresos-caja" onblur="evalMonto(this)"></div>
+                        </div>
+                        <div class="analysis-form-block">
+                            <h3>Estado de resultado</h3>
+                            <div class="form-grid">
+                                <div class="form-group"><label>Ventas netas</label><input type="text" inputmode="decimal" id="ef-ventas" required onblur="evalMonto(this)"></div>
+                                <div class="form-group"><label>Cantidad vendida</label><input type="text" inputmode="decimal" id="ef-cantidad" required></div>
+                                <div class="form-group"><label>Costos de productos</label><input type="text" inputmode="decimal" id="ef-costos" onblur="evalMonto(this)"></div>
+                                <div class="form-group"><label>Costo de envíos</label><input type="text" inputmode="decimal" id="ef-envios" onblur="evalMonto(this)"></div>
+                                <div class="form-group"><label>Publicidad</label><input type="text" inputmode="decimal" id="ef-publicidad" onblur="evalMonto(this)"></div>
+                                <div class="form-group"><label>Comisiones Tienda Nube</label><input type="text" inputmode="decimal" id="ef-comision-tn" onblur="evalMonto(this)"></div>
+                                <div class="form-group"><label>Comisiones medios de pago</label><input type="text" inputmode="decimal" id="ef-comision-mp" onblur="evalMonto(this)"></div>
+                                <div class="form-group"><label>Otros gastos</label><input type="text" inputmode="decimal" id="ef-otros-gastos" onblur="evalMonto(this)"></div>
+                            </div>
+                        </div>
+                        <div class="analysis-form-block">
+                            <h3>Balance general</h3>
+                            <div class="form-grid">
+                                <div class="form-group"><label>Caja efectivo</label><input type="text" inputmode="decimal" id="ef-caja" onblur="evalMonto(this)"></div>
+                                <div class="form-group"><label>Bancos</label><input type="text" inputmode="decimal" id="ef-bancos" onblur="evalMonto(this)"></div>
+                                <div class="form-group"><label>Cuentas por cobrar</label><input type="text" inputmode="decimal" id="ef-cxc" onblur="evalMonto(this)"></div>
+                                <div class="form-group"><label>Inventario</label><input type="text" inputmode="decimal" id="ef-inventario" onblur="evalMonto(this)"></div>
+                                <div class="form-group"><label>Crédito</label><input type="text" inputmode="decimal" id="ef-credito" onblur="evalMonto(this)"></div>
+                                <div class="form-group"><label>Tarjetas de crédito</label><input type="text" inputmode="decimal" id="ef-tarjetas" onblur="evalMonto(this)"></div>
+                            </div>
+                        </div>
+                        <div class="analysis-form-block">
+                            <h3>Flujo de caja</h3>
+                            <div class="form-grid">
+                                <div class="form-group"><label>Ingresos caja</label><input type="text" inputmode="decimal" id="ef-ingresos-caja" onblur="evalMonto(this)"></div>
+                                <div class="form-group"><label>Egresos caja</label><input type="text" inputmode="decimal" id="ef-egresos-caja" onblur="evalMonto(this)"></div>
+                            </div>
                         </div>
                         <div style="margin-top:20px;display:flex;gap:10px;align-items:center">
                             <button type="submit" class="btn btn-primary">Guardar estado</button>
@@ -1292,7 +1334,7 @@ function descargarBackup() {
 let transactions = JSON.parse(localStorage.getItem('hc_tx') || '[]');
 let transfers    = JSON.parse(localStorage.getItem('hc_tr') || '[]');
 let currentTipo  = 'ingreso';
-let chartG = null, chartI = null;
+let chartG = null, chartI = null, chartAnalisisEvol = null, chartAnalisisComp = null;
 
 function persist() {
     localStorage.setItem('hc_tx', JSON.stringify(transactions));
@@ -2184,7 +2226,7 @@ function showAnalysisTab(tab, el) {
 }
 
 function clearEstadoFinancieroForm() {
-    ['ef-periodo','ef-ventas','ef-cantidad','ef-costos','ef-envios','ef-publicidad','ef-ingresos-caja','ef-egresos-caja'].forEach(id => {
+    ['ef-periodo','ef-ventas','ef-cantidad','ef-costos','ef-envios','ef-publicidad','ef-comision-tn','ef-comision-mp','ef-otros-gastos','ef-caja','ef-bancos','ef-cxc','ef-inventario','ef-credito','ef-tarjetas','ef-ingresos-caja','ef-egresos-caja'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
@@ -2198,10 +2240,20 @@ function saveEstadoFinanciero(e) {
     const costosProducto = parseMoneyInput(document.getElementById('ef-costos').value);
     const envios = parseMoneyInput(document.getElementById('ef-envios').value);
     const publicidad = parseMoneyInput(document.getElementById('ef-publicidad').value);
+    const comisionTn = parseMoneyInput(document.getElementById('ef-comision-tn').value);
+    const comisionMp = parseMoneyInput(document.getElementById('ef-comision-mp').value);
+    const otrosGastos = parseMoneyInput(document.getElementById('ef-otros-gastos').value);
+    const caja = parseMoneyInput(document.getElementById('ef-caja').value);
+    const bancos = parseMoneyInput(document.getElementById('ef-bancos').value);
+    const cuentasPorCobrar = parseMoneyInput(document.getElementById('ef-cxc').value);
+    const inventario = parseMoneyInput(document.getElementById('ef-inventario').value);
+    const credito = parseMoneyInput(document.getElementById('ef-credito').value);
+    const tarjetas = parseMoneyInput(document.getElementById('ef-tarjetas').value);
     const ingresosCaja = parseMoneyInput(document.getElementById('ef-ingresos-caja').value);
     const egresosCaja = parseMoneyInput(document.getElementById('ef-egresos-caja').value);
     if (!periodo || !ventas || !cantidad) { alert('Cargá al menos mes, ventas y cantidad.'); return; }
     const utilidadBruta = ventas - costosProducto;
+    const utilidadNeta = utilidadBruta - envios - publicidad - comisionTn - comisionMp - otrosGastos;
     const item = {
         periodo,
         year: parseInt(periodo.slice(0,4), 10),
@@ -2213,12 +2265,19 @@ function saveEstadoFinanciero(e) {
         utilidadBruta,
         envios,
         publicidad,
+        comisionTn,
+        comisionMp,
+        otrosGastos,
+        utilidadNeta,
         ingresosCaja,
         egresosCaja,
         saldoCaja: ingresosCaja - egresosCaja,
-        caja: 0,
-        bancos: 0,
-        credito: 0,
+        caja,
+        bancos,
+        cuentasPorCobrar,
+        inventario,
+        credito,
+        tarjetas,
         margenBruto: ventas ? utilidadBruta / ventas : 0,
         manual: true
     };
@@ -2283,6 +2342,45 @@ function renderAnalisisHistorico() {
             + '<td><button type="button" class="btn btn-outline btn-sm" onclick="openFinancialDetail(\'' + x.periodo + '\')">Abrir</button></td>'
             + '</tr>';
     }).join('') : '<tr class="empty-row"><td colspan="9">Sin estados financieros para mostrar</td></tr>';
+    renderAnalisisCharts(items);
+}
+
+function renderAnalisisCharts(items) {
+    items = items || [];
+    const evol = document.getElementById('chart-analisis-evolucion');
+    const comp = document.getElementById('chart-analisis-composicion');
+    if (chartAnalisisEvol) chartAnalisisEvol.destroy();
+    if (chartAnalisisComp) chartAnalisisComp.destroy();
+    if (!items.length || !window.Chart) return;
+    if (evol) {
+        chartAnalisisEvol = new Chart(evol.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: items.map(x => monthLabel(x.periodo)),
+                datasets: [
+                    { label: 'Ventas', data: items.map(x => x.ventas || 0), backgroundColor: 'rgba(34,197,94,.65)', borderRadius: 4 },
+                    { label: 'Utilidad bruta', data: items.map(x => x.utilidadBruta || 0), backgroundColor: 'rgba(109,67,203,.65)', borderRadius: 4 },
+                    { label: 'Saldo caja', type: 'line', data: items.map(x => x.saldoCaja || 0), borderColor: '#2563eb', backgroundColor: '#2563eb', tension: .28, pointRadius: 3 }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { position:'top', labels:{ boxWidth:12, font:{ size:11 } } }, tooltip: { callbacks: { label: ctx => ' ' + ctx.dataset.label + ': ' + fmt(ctx.raw) } } },
+                scales: { x:{ grid:{ display:false } }, y:{ ticks:{ callback:v => '$' + Intl.NumberFormat('es-AR',{ notation:'compact' }).format(v) } } }
+            }
+        });
+    }
+    const last = items[items.length - 1];
+    if (comp && last) {
+        chartAnalisisComp = new Chart(comp.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Productos', 'Envíos', 'Publicidad', 'Comisiones'],
+                datasets: [{ data: [last.costosProducto || 0, last.envios || 0, last.publicidad || 0, (last.comisionTn || 0) + (last.comisionMp || 0)], backgroundColor: ['#ef4444','#f59e0b','#8b5cf6','#0ea5e9'], borderWidth: 0 }]
+            },
+            options: { responsive:true, plugins:{ legend:{ position:'bottom', labels:{ boxWidth:12, font:{ size:11 } } }, tooltip:{ callbacks:{ label: ctx => ' ' + ctx.label + ': ' + fmt(ctx.raw) } } }, cutout:'58%' }
+        });
+    }
 }
 
 function financialDetailFor(periodo) {
@@ -2297,7 +2395,11 @@ function financialDetailFor(periodo) {
             ['Utilidad Bruta', '', '', item.utilidadBruta],
             ['Costo de Envios', '', '', item.envios],
             ['Gastos de Publicidad', '', '', item.publicidad],
-            ['Margen Bruto', '', '', item.margenBruto]
+            ['Comisiones de Tienda Nube', '', '', item.comisionTn || 0],
+            ['Comisiones de Medios de Pago', '', '', item.comisionMp || 0],
+            ['Utilidad Neta', '', '', item.utilidadNeta || (item.utilidadBruta - item.envios - item.publicidad - (item.comisionTn || 0) - (item.comisionMp || 0) - (item.otrosGastos || 0))],
+            ['Otros Gastos', '', '', item.otrosGastos || 0],
+            ['Utilidad (pérdida) del período', '', '', item.utilidadNeta || (item.utilidadBruta - item.envios - item.publicidad - (item.comisionTn || 0) - (item.comisionMp || 0) - (item.otrosGastos || 0))]
         ],
         'Flujo de Caja': [
             ['Concepto', 'Total'],
@@ -2306,10 +2408,15 @@ function financialDetailFor(periodo) {
             ['Saldo', item.saldoCaja]
         ],
         'Balance General': [
-            ['Concepto', 'Total'],
+            ['ACTIVO', '', 'PASIVO', ''],
+            ['Activo Circulante', '', 'Pasivo Circulante', ''],
             ['Caja (Efectivo)', item.caja || 0],
             ['Bancos', item.bancos || 0],
-            ['Credito', item.credito || 0]
+            ['Cuentas por cobrar', item.cuentasPorCobrar || 0],
+            ['Inventario', item.inventario || 0],
+            ['Total Activo Circulante', (item.caja || 0) + (item.bancos || 0) + (item.cuentasPorCobrar || 0) + (item.inventario || 0), 'Total Pasivo Circulante', (item.credito || 0) + (item.tarjetas || 0)],
+            ['', '', 'Credito', item.credito || 0],
+            ['', '', 'Tarjetas de Crédito', item.tarjetas || 0]
         ]
     };
 }
@@ -2355,9 +2462,21 @@ function renderFinancialDetailTable() {
         wrap.innerHTML = '<div style="padding:18px;color:var(--gray-500)">Sin detalle disponible para esta hoja.</div>';
         return;
     }
-    wrap.innerHTML = '<table><tbody>' + rows.map(row => {
-        return '<tr>' + row.map(cell => '<td>' + formatFinancialCell(cell) + '</td>').join('') + '</tr>';
+    wrap.innerHTML = '<table><tbody>' + rows.map((row, idx) => {
+        return '<tr class="' + financialRowClass(row, idx) + '">' + row.map(cell => '<td class="' + financialCellClass(cell) + '">' + formatFinancialCell(cell) + '</td>').join('') + '</tr>';
     }).join('') + '</tbody></table>';
+}
+
+function financialRowClass(row, idx) {
+    const text = (row || []).join(' ').toLowerCase();
+    if (idx === 0 || text.indexOf('estado de resultado') >= 0 || text.indexOf('balance mensual') >= 0 || text.indexOf('flujo de caja') >= 0) return 'sheet-row-title';
+    if (text.indexOf('activo circulante') >= 0 || text.indexOf('pasivo circulante') >= 0 || text === 'activo pasivo') return 'sheet-row-section';
+    if (text.indexOf('total') >= 0 || text.indexOf('suma') >= 0 || text.indexOf('utilidad bruta') >= 0 || text.indexOf('utilidad neta') >= 0 || text.indexOf('saldo') >= 0 || text.indexOf('correcto') >= 0) return 'sheet-row-total';
+    return '';
+}
+
+function financialCellClass(value) {
+    return typeof value === 'number' && value < 0 ? 'sheet-cell-neg' : (typeof value === 'number' && value > 0 ? 'sheet-cell-pos' : '');
 }
 
 function formatFinancialCell(value) {
