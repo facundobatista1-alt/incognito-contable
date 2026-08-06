@@ -2463,7 +2463,7 @@ function renderFinancialDetailTable() {
         return;
     }
     wrap.innerHTML = '<table><tbody>' + rows.map((row, idx) => {
-        return '<tr class="' + financialRowClass(row, idx) + '">' + row.map(cell => '<td class="' + financialCellClass(cell) + '">' + formatFinancialCell(cell) + '</td>').join('') + '</tr>';
+        return '<tr class="' + financialRowClass(row, idx) + '">' + row.map(cell => '<td class="' + financialCellClass(cell, row) + '">' + formatFinancialCell(cell) + '</td>').join('') + '</tr>';
     }).join('') + '</tbody></table>';
 }
 
@@ -2475,8 +2475,16 @@ function financialRowClass(row, idx) {
     return '';
 }
 
-function financialCellClass(value) {
-    return typeof value === 'number' && value < 0 ? 'sheet-cell-neg' : (typeof value === 'number' && value > 0 ? 'sheet-cell-pos' : '');
+function financialCellClass(value, row) {
+    if (typeof value !== 'number' || value === 0) return '';
+    const text = normalizeFinancialText((row || []).join(' '));
+    if (text.indexOf('costo') >= 0 || text.indexOf('gasto') >= 0 || text.indexOf('egreso') >= 0 || text.indexOf('comision') >= 0 || text.indexOf('pasivo') >= 0 || text.indexOf('credito') >= 0 || text.indexOf('tarjeta') >= 0 || text.indexOf('depreciacion') >= 0) return 'sheet-cell-neg';
+    if (text.indexOf('saldo') >= 0 || text.indexOf('utilidad') >= 0 || text.indexOf('resultado') >= 0) return value < 0 ? 'sheet-cell-neg' : 'sheet-cell-pos';
+    return value < 0 ? 'sheet-cell-neg' : 'sheet-cell-pos';
+}
+
+function normalizeFinancialText(value) {
+    return String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
 function formatFinancialCell(value) {
