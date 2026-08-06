@@ -1210,7 +1210,7 @@ function sbSync(txIds, trIds) {
 }
 
 function descargarBackup() {
-    const fecha = new Date().toISOString().slice(0,10);
+    const fecha = todayLocal();
     const backup = {
         exportado: new Date().toISOString(),
         transactions: transactions,
@@ -1458,9 +1458,7 @@ function evalMonto(input) {
 }
 
 function addDays(dateStr, n) {
-    const d = new Date(dateStr + 'T00:00:00');
-    d.setDate(d.getDate() + n);
-    return d.toISOString().split('T')[0];
+    return addLocalDays(dateStr, n);
 }
 
 function checkFluxCuenta() {
@@ -1800,12 +1798,12 @@ function getPeriodEndDate() {
     const yy  = now.getFullYear();
     const mm  = now.getMonth(); // 0-indexed
     if (dashPeriod === 'all') return null;
-    if (dashPeriod === 'month') return now.toISOString().split('T')[0];
+    if (dashPeriod === 'month') return todayLocal();
     if (dashPeriod === 'prev') {
         const lastDay = new Date(yy, mm, 0);
-        return lastDay.toISOString().split('T')[0];
+        return todayFromDate(lastDay);
     }
-    if (dashPeriod === 'year') return now.toISOString().split('T')[0];
+    if (dashPeriod === 'year') return todayLocal();
     if (dashPeriod === 'custom') {
         const hasta = document.getElementById('d-hasta')?.value;
         return hasta || null;
@@ -2463,7 +2461,7 @@ function renderTransfers() {
 // INIT
 // ══════════════════════════════════════════════════════
 function init() {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayLocal();
     document.getElementById('f-fecha').value = today;
     document.getElementById('t-fecha').value = today;
 
@@ -2612,7 +2610,7 @@ function renderCaja() {
     }
 
     // Fill default dates
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayLocal();
     ['cdep-fecha','crend-fecha'].forEach(id => { const el = document.getElementById(id); if (el && !el.value) el.value = today; });
 
     // Caja transactions
@@ -2768,7 +2766,7 @@ async function refreshMpUnreleasedBalance(force, cutoff) {
             headers.apikey = SB_KEY;
             headers.Authorization = 'Bearer ' + SB_KEY;
         }
-        var today = new Date().toISOString().split('T')[0];
+        var today = todayLocal();
         var res = await fetch(apiUrl, {
             method: 'POST',
             headers: headers,
@@ -2900,7 +2898,7 @@ async function confirmarCargaMp() {
 var _mpMovimientosItems = [];
 
 function getTodayISO() {
-    return new Date().toISOString().split('T')[0];
+    return todayLocal();
 }
 
 function abrirMovimientosMp() {
@@ -3293,7 +3291,7 @@ async function consultarLiberacionesMp() {
 
     var ids = pending.map(function(t){ return getMpPaymentId(t); });
     var dates = pending.map(function(t){ return t.fecha; }).sort();
-    var today = new Date().toISOString().split('T')[0];
+    var today = todayLocal();
     var payload = {
         paymentIds: ids,
         from: dates[0],
@@ -3375,7 +3373,7 @@ function renderMpCobros() {
     var pending = transactions.filter(function(t){ return t.cuenta === 'MP FB' && t.pendiente; });
     if (pending.length === 0) { el.style.display = 'none'; return; }
 
-    var today = new Date().toISOString().split('T')[0];
+    var today = todayLocal();
     var grupos = {};
     pending.forEach(function(t) {
         var lib = addDays(t.fecha, 10);
