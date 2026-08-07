@@ -1604,12 +1604,12 @@ function saveEdit() {
 
 
 function evalMonto(input) {
-    const raw = input.value.replace(/,/g, '.').replace(/\s/g, '');
-    if (!raw || /^\d*\.?\d*$/.test(raw)) return; // already a plain number
+    const raw = input.value.replace(/\s/g, '');
+    if (!raw || isPlainMoneyInput(raw)) return; // already a plain number
     try {
         // Only allow safe math chars
-        if (!/^[\d\.+\-*\/()\s]+$/.test(raw)) return;
-        const result = Function('"use strict"; return (' + raw + ')')();
+        if (!/^[\d\.,+\-*\/()\s]+$/.test(raw)) return;
+        const result = Function('"use strict"; return (' + normalizeMoneyExpression(raw) + ')')();
         if (isFinite(result) && result >= 0) {
             input.value = parseFloat(result.toFixed(2));
             input.style.background = '#f0fdf4';
@@ -2760,13 +2760,42 @@ function saveFixedUsdRate() {
 }
 
 function parseMoneyInput(value) {
-    const raw = String(value || '').replace(/,/g, '.').replace(/\s/g, '');
+    const raw = String(value || '').replace(/\s/g, '');
     if (!raw) return 0;
-    if (/^[\d\.+\-*\/()\s]+$/.test(raw) && /[+\-*\/()]/.test(raw)) {
+    if (/^[\d\.,+\-*\/()\s]+$/.test(raw) && /[+\-*\/()]/.test(raw)) {
         try {
-            const result = Function('"use strict"; return (' + raw + ')')();
+            const result = Function('"use strict"; return (' + normalizeMoneyExpression(raw) + ')')();
             return isFinite(result) ? parseFloat(result.toFixed(2)) : 0;
         } catch(e) { return 0; }
+    }
+    return parseLocaleNumber(raw);
+}
+
+function isPlainMoneyInput(value) {
+    return /^-?\d+(?:[,.]\d{1,2})?$/.test(String(value || ''))
+        || /^-?\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?$/.test(String(value || ''))
+        || /^-?\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?$/.test(String(value || ''));
+}
+
+function normalizeMoneyExpression(value) {
+    return String(value || '').replace(/\d[\d.,]*/g, function(match) {
+        return String(parseLocaleNumber(match));
+    });
+}
+
+function parseLocaleNumber(value) {
+    let raw = String(value || '').replace(/\s/g, '');
+    if (!raw) return 0;
+    const lastComma = raw.lastIndexOf(',');
+    const lastDot = raw.lastIndexOf('.');
+    if (lastComma >= 0 && lastDot >= 0) {
+        const decimalSep = lastComma > lastDot ? ',' : '.';
+        const thousandSep = decimalSep === ',' ? '.' : ',';
+        raw = raw.split(thousandSep).join('').replace(decimalSep, '.');
+    } else if (lastDot >= 0) {
+        raw = /^\d{1,3}(?:\.\d{3})+$/.test(raw) ? raw.replace(/\./g, '') : raw;
+    } else if (lastComma >= 0) {
+        raw = /^\d{1,3}(?:,\d{3})+$/.test(raw) ? raw.replace(/,/g, '') : raw.replace(',', '.');
     }
     return parseFloat(raw) || 0;
 }
