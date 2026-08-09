@@ -1443,6 +1443,7 @@ function showPage(page, el) {
     if (el) el.classList.add('active');
     const renders = { dashboard: renderDashboard, historial: renderHistorial, gastos: renderGastos, analisis: renderAnalisis, gastosFijos: renderGastosFijos, ingresos: renderIngresos, transferencias: renderTransfers };
     if (renders[page]) renders[page]();
+    if (typeof updateMpMovimientosBadge === 'function') updateMpMovimientosBadge();
 }
 
 // ══════════════════════════════════════════════════════
@@ -4016,7 +4017,15 @@ async function consultarMovimientosMp() {
         _mpMovimientosItems = rows;
         renderPreviewMovimientosMp();
         var message = mpMovimientosStatusMessage(rows, data);
-        clearMpMovimientosPendingQuery();
+        saveMpMovimientosPendingQuery({
+            status: 'ready',
+            from: desde,
+            to: hasta,
+            createdAt: new Date().toISOString(),
+            readyAt: new Date().toISOString(),
+            items: rows,
+            message: message
+        });
         if (!rows.length) {
             status.style.color = '#92400e';
             status.textContent = message;
