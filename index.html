@@ -3910,7 +3910,7 @@ function applyMpMovementUiRules(m) {
 function mpCategorySelectHtml(idx, selected) {
     var cats = ALL_CATS.slice();
     if (selected && cats.indexOf(selected) < 0) cats.push(selected);
-    return '<select class="mp-mov-cat" data-idx="' + idx + '" style="width:130px;border:1px solid #d1d5db;border-radius:6px;padding:5px 7px;font-size:.82rem;background:white">'
+    return '<select class="mp-mov-cat" data-idx="' + idx + '" style="width:100%;border:1px solid #d1d5db;border-radius:6px;padding:5px 7px;font-size:.82rem;background:white">'
         + cats.map(function(c){ return '<option value="' + escapeHtml(c) + '"' + (c === selected ? ' selected' : '') + '>' + escapeHtml(c) + '</option>'; }).join('')
         + '</select>';
 }
@@ -3923,7 +3923,7 @@ function isMpPayoutMovement(m) {
 function mpAccountSelectHtml(idx, selected, disabled) {
     var cuentas = ACCOUNTS.filter(function(a){ return a !== 'MP FB'; });
     if (selected && cuentas.indexOf(selected) < 0) cuentas.push(selected);
-    return '<select class="mp-mov-transfer-dest" data-idx="' + idx + '"' + (disabled ? ' disabled' : '') + ' style="width:130px;border:1px solid #d1d5db;border-radius:6px;padding:5px 7px;font-size:.82rem;background:white">'
+    return '<select class="mp-mov-transfer-dest" data-idx="' + idx + '"' + (disabled ? ' disabled' : '') + ' style="width:100%;border:1px solid #d1d5db;border-radius:6px;padding:5px 7px;font-size:.82rem;background:white">'
         + '<option value="">Destino...</option>'
         + cuentas.map(function(c){ return '<option value="' + escapeHtml(c) + '"' + (c === selected ? ' selected' : '') + '>' + escapeHtml(c) + '</option>'; }).join('')
         + '</select>';
@@ -3934,7 +3934,7 @@ function mpMovementKindHtml(idx, m, disabled) {
         return '<span style="color:#6b7280;font-size:.8rem">Movimiento</span>';
     }
     var kind = m.modoCarga || 'transferencia';
-    return '<select class="mp-mov-kind" data-idx="' + idx + '"' + (disabled ? ' disabled' : '') + ' style="width:125px;border:1px solid #d1d5db;border-radius:6px;padding:5px 7px;font-size:.82rem;background:white">'
+    return '<select class="mp-mov-kind" data-idx="' + idx + '"' + (disabled ? ' disabled' : '') + ' style="width:100%;border:1px solid #d1d5db;border-radius:6px;padding:5px 7px;font-size:.82rem;background:white">'
         + '<option value="transferencia"' + (kind === 'transferencia' ? ' selected' : '') + '>Transferencia</option>'
         + '<option value="gasto"' + (kind === 'gasto' ? ' selected' : '') + '>Gasto</option>'
         + '</select>';
@@ -4052,27 +4052,28 @@ function renderPreviewMovimientosMp() {
         var editDisabled = m.existe ? ' disabled' : '';
         var isPayout = isMpPayoutMovement(m);
         return '<tr style="border-bottom:1px solid #f3f4f6">'
-            + '<td style="padding:6px 8px;text-align:center"><input type="checkbox" class="mp-mov-check" data-idx="' + idx + '"' + checked + disabled + '></td>'
-            + '<td style="padding:6px 8px;white-space:nowrap">' + fmtDate(m.fecha) + '</td>'
-            + '<td style="padding:6px 8px"><input class="mp-mov-desc" data-idx="' + idx + '" value="' + escapeHtml(m.descripcionEditable || stripMpMarkerText(m.descripcionFinal || m.descripcion || '')) + '"' + editDisabled + ' style="width:100%;min-width:220px;border:1px solid #d1d5db;border-radius:6px;padding:5px 7px;font-size:.84rem;color:#374151"><div style="font-family:monospace;color:#9ca3af;font-size:.75rem;margin-top:2px">' + (m.transactionType || '') + '</div></td>'
-            + '<td style="padding:6px 8px">' + mpMovementKindHtml(idx, m, m.existe) + '</td>'
-            + '<td style="padding:6px 8px">' + mpCategorySelectHtml(idx, m.categoria || 'Otros') + '</td>'
-            + '<td style="padding:6px 8px">' + (isPayout ? mpAccountSelectHtml(idx, m.destinoTransferencia || '', m.existe) : '<span style="color:#9ca3af;font-size:.8rem">-</span>') + '</td>'
-            + '<td style="padding:6px 8px;text-align:right;font-weight:700;color:' + color + '">' + monto + '</td>'
-            + '<td style="padding:6px 8px;text-align:right">' + estado + '</td>'
+            + '<td style="padding:6px 5px;text-align:center"><input type="checkbox" class="mp-mov-check" data-idx="' + idx + '"' + checked + disabled + '></td>'
+            + '<td style="padding:6px 5px;white-space:nowrap">' + fmtDate(m.fecha) + '</td>'
+            + '<td style="padding:6px 5px"><input class="mp-mov-desc" data-idx="' + idx + '" value="' + escapeHtml(m.descripcionEditable || stripMpMarkerText(m.descripcionFinal || m.descripcion || '')) + '"' + editDisabled + ' style="width:100%;min-width:0;border:1px solid #d1d5db;border-radius:6px;padding:5px 7px;font-size:.84rem;color:#374151;box-sizing:border-box"><div style="font-family:monospace;color:#9ca3af;font-size:.72rem;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (m.transactionType || '') + '</div></td>'
+            + '<td style="padding:6px 5px">' + mpMovementKindHtml(idx, m, m.existe) + '</td>'
+            + '<td style="padding:6px 5px">' + mpCategorySelectHtml(idx, m.categoria || 'Otros') + '</td>'
+            + '<td style="padding:6px 5px">' + (isPayout ? mpAccountSelectHtml(idx, m.destinoTransferencia || '', m.existe) : '<span style="color:#9ca3af;font-size:.8rem">-</span>') + '</td>'
+            + '<td style="padding:6px 5px;text-align:right;font-weight:700;color:' + color + ';white-space:nowrap">' + monto + '</td>'
+            + '<td style="padding:6px 5px;text-align:right;white-space:nowrap">' + estado + '</td>'
             + '</tr>';
     }).join('');
-    preview.innerHTML = '<div style="max-height:360px;overflow:auto;border:1px solid #e5e7eb;border-radius:8px">'
-        + '<table style="width:100%;border-collapse:collapse;font-size:.84rem">'
+    preview.innerHTML = '<div style="max-height:410px;overflow-y:auto;overflow-x:hidden;border:1px solid #e5e7eb;border-radius:8px">'
+        + '<table style="width:100%;border-collapse:collapse;font-size:.82rem;table-layout:fixed">'
+        + '<colgroup><col style="width:28px"><col style="width:84px"><col><col style="width:126px"><col style="width:130px"><col style="width:130px"><col style="width:112px"><col style="width:78px"></colgroup>'
         + '<thead><tr style="border-bottom:1px solid #e5e7eb;background:#f9fafb">'
-        + '<th style="padding:6px 8px;width:34px"></th>'
-        + '<th style="text-align:left;padding:6px 8px">Fecha</th>'
-        + '<th style="text-align:left;padding:6px 8px">Descripcion</th>'
-        + '<th style="text-align:left;padding:6px 8px">Tipo</th>'
-        + '<th style="text-align:left;padding:6px 8px">Categoria</th>'
-        + '<th style="text-align:left;padding:6px 8px">Destino</th>'
-        + '<th style="text-align:right;padding:6px 8px">Monto</th>'
-        + '<th style="text-align:right;padding:6px 8px">Estado</th>'
+        + '<th style="padding:6px 5px"></th>'
+        + '<th style="text-align:left;padding:6px 5px">Fecha</th>'
+        + '<th style="text-align:left;padding:6px 5px">Descripcion</th>'
+        + '<th style="text-align:left;padding:6px 5px">Tipo</th>'
+        + '<th style="text-align:left;padding:6px 5px">Categoria</th>'
+        + '<th style="text-align:left;padding:6px 5px">Destino</th>'
+        + '<th style="text-align:right;padding:6px 5px">Monto</th>'
+        + '<th style="text-align:right;padding:6px 5px">Estado</th>'
         + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
     confirmWrap.style.display = _mpMovimientosItems.some(function(m){ return !m.existe; }) ? 'block' : 'none';
 }
@@ -4402,7 +4403,7 @@ function renderMpCobros() {
 
     <!-- MOVIMIENTOS MP MODAL -->
     <div class="modal-overlay" id="mp-mov-modal" onclick="if(event.target===this)cerrarMovimientosMp()" style="z-index:300">
-        <div class="modal-box" style="max-width:860px">
+        <div class="modal-box" style="width:calc(100vw - 36px);max-width:1120px">
             <h3>Movimientos Mercado Pago</h3>
             <p style="font-size:.85rem;color:#6b7280;margin-bottom:12px">
                 Revisa envios, retiros, devoluciones y otros movimientos de cuenta antes de cargarlos al historial.
