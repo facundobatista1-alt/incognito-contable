@@ -322,6 +322,34 @@
         .btn-ghost { background: none; border: none; color: var(--gray-500); padding: 5px 10px; border-radius: 6px; font-size: 0.8rem; }
         .btn-ghost:hover { background: var(--danger-light); color: #b91c1c; }
         .btn-sm { padding: 5px 9px; font-size: 0.78rem; }
+        .mp-mov-btn { position: relative; }
+        .mp-mov-badge {
+            align-items: center;
+            background: #dc2626;
+            border: 2px solid white;
+            border-radius: 999px;
+            color: white;
+            display: none;
+            font-size: .68rem;
+            font-weight: 800;
+            height: 18px;
+            justify-content: center;
+            line-height: 1;
+            min-width: 18px;
+            padding: 0 4px;
+            position: absolute;
+            right: -7px;
+            top: -8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,.18);
+        }
+        .mp-mov-btn.is-pending .mp-mov-badge {
+            background: #f59e0b;
+            display: inline-flex;
+        }
+        .mp-mov-btn.is-ready .mp-mov-badge {
+            background: #dc2626;
+            display: inline-flex;
+        }
 
         /* ── FILTERS BAR ── */
         .filters-bar { background: white; border-radius: var(--radius); padding: 12px 16px; box-shadow: var(--shadow); margin-bottom: 16px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
@@ -959,7 +987,7 @@
                 <button class="btn btn-sm" style="background:#f59e0b;color:white;border:none;font-weight:600;" onclick="abrirLoteFlux()">⚡ Completar por lote</button>
                 <button class="btn btn-sm" style="background:#2563eb;color:white;border:none;font-weight:600;" onclick="abrirCargaMp()">📥 Cargar MP</button>
                 <button class="btn btn-sm" style="background:#1d4ed8;color:white;border:none;font-weight:600;" onclick="consultarLiberacionesMp()">Consultar MP</button>
-                <button class="btn btn-sm" style="background:#0f766e;color:white;border:none;font-weight:600;" onclick="abrirMovimientosMp()">Movimientos MP</button>
+                <button id="mp-mov-open-btn" class="btn btn-sm mp-mov-btn" style="background:#0f766e;color:white;border:none;font-weight:600;" onclick="abrirMovimientosMp()">Movimientos MP <span id="mp-mov-badge" class="mp-mov-badge"></span></button>
                 <button class="btn btn-outline btn-sm" onclick="clearHistorialFilters()">Limpiar</button>
                 <button class="btn btn-sm" style="background:#16a34a;color:white;border:none;font-weight:600;" onclick="exportarExcel()">⬇ Excel</button>
             </div>
@@ -3178,6 +3206,7 @@ function init() {
 
     updateCatSelect();
     renderDashboard();
+    startMpMovimientosBackgroundPolling();
 }
 
 init();
@@ -3596,27 +3625,186 @@ async function confirmarCargaMp() {
 
 // Mercado Pago: otros movimientos de cuenta
 var _mpMovimientosItems = [];
+var MP_MOV_PENDING_KEY = 'hc_mp_movimientos_pending';
+var _mpMovimientosPollTimer = null;
+var _mpMovimientosPollInFlight = false;
 
 function getTodayISO() {
     return todayLocal();
 }
 
 function abrirMovimientosMp() {
+    var saved = getMpMovimientosPendingQuery();
     var today = getTodayISO();
     var hasta = today;
     var desde = addDays(hasta, -20);
+    if (saved && saved.from && saved.to) {
+        desde = saved.from;
+        hasta = saved.to;
+    }
     document.getElementById('mp-mov-desde').value = desde;
     document.getElementById('mp-mov-hasta').value = hasta;
     document.getElementById('mp-mov-status').textContent = '';
     document.getElementById('mp-mov-preview').innerHTML = '';
     document.getElementById('mp-mov-confirm-wrap').style.display = 'none';
     _mpMovimientosItems = [];
+    if (saved && saved.status === 'ready' && Array.isArray(saved.items)) {
+        _mpMovimientosItems = saved.items.map(function(m) {
+            return applyMpMovementUiRules(Object.assign({}, m));
+        });
+        _mpMovimientosItems.forEach(function(m){ m.existe = mpMovimientoExiste(m); m.descripcionFinal = descripcionMpMovimiento(m); });
+        renderPreviewMovimientosMp();
+        var nuevos = _mpMovimientosItems.filter(function(m){ return !m.existe; }).length;
+        var status = document.getElementById('mp-mov-status');
+        status.style.color = nuevos ? '#15803d' : '#6b7280';
+        status.textContent = saved.message || ('Informe listo: ' + nuevos + ' movimiento(s) nuevos para revisar.');
+    } else if (saved && saved.status === 'pending') {
+        var pendingStatus = document.getElementById('mp-mov-status');
+        pendingStatus.style.color = '#92400e';
+        pendingStatus.textContent = 'Hay una consulta pendiente de Mercado Pago. La app la sigue revisando en segundo plano.';
+    } else if (saved && saved.status === 'error') {
+        var errorStatus = document.getElementById('mp-mov-status');
+        errorStatus.style.color = '#dc2626';
+        errorStatus.textContent = saved.message || 'La ultima consulta de Mercado Pago fallo.';
+    }
+    updateMpMovimientosBadge();
     document.getElementById('mp-mov-modal').classList.add('open');
 }
 
 function cerrarMovimientosMp() {
     document.getElementById('mp-mov-modal').classList.remove('open');
     _mpMovimientosItems = [];
+}
+
+function getMpMovimientosPendingQuery() {
+    try { return JSON.parse(localStorage.getItem(MP_MOV_PENDING_KEY) || 'null'); }
+    catch(e) { return null; }
+}
+
+function saveMpMovimientosPendingQuery(data) {
+    if (!data) {
+        localStorage.removeItem(MP_MOV_PENDING_KEY);
+    } else {
+        localStorage.setItem(MP_MOV_PENDING_KEY, JSON.stringify(data));
+    }
+    updateMpMovimientosBadge();
+}
+
+function clearMpMovimientosPendingQuery() {
+    saveMpMovimientosPendingQuery(null);
+}
+
+function updateMpMovimientosBadge() {
+    var btn = document.getElementById('mp-mov-open-btn');
+    var badge = document.getElementById('mp-mov-badge');
+    if (!btn || !badge) return;
+    var saved = getMpMovimientosPendingQuery();
+    btn.classList.remove('is-pending', 'is-ready');
+    badge.textContent = '';
+    if (!saved) return;
+    if (saved.status === 'ready') {
+        btn.classList.add('is-ready');
+        badge.textContent = '1';
+    } else if (saved.status === 'pending') {
+        btn.classList.add('is-pending');
+        badge.textContent = '...';
+    }
+}
+
+function startMpMovimientosBackgroundPolling() {
+    updateMpMovimientosBadge();
+    if (_mpMovimientosPollTimer) return;
+    setTimeout(checkMpMovimientosPendingReport, 2500);
+    _mpMovimientosPollTimer = setInterval(checkMpMovimientosPendingReport, 30000);
+}
+
+async function requestMpMovimientosData(desde, hasta) {
+    var apiUrl = getMpAccountMovementsApiUrl();
+    var headers = { 'Content-Type': 'application/json' };
+    if (apiUrl.indexOf(SB_URL) === 0) {
+        headers.apikey = SB_KEY;
+        headers.Authorization = 'Bearer ' + SB_KEY;
+    }
+    var res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify({ from: desde, to: hasta, includeSales: false })
+    });
+    var text = await res.text();
+    var data = text ? JSON.parse(text) : {};
+    if (!res.ok) throw new Error(data.error || data.message || ('Error HTTP ' + res.status));
+    return data;
+}
+
+function prepareMpMovimientosRows(data) {
+    var rows = normalizeMpMovementRows(data);
+    rows.forEach(function(m){ m.existe = mpMovimientoExiste(m); m.descripcionFinal = descripcionMpMovimiento(m); });
+    return rows;
+}
+
+function mpMovimientosStatusMessage(rows, data) {
+    var nuevos = rows.filter(function(m){ return !m.existe; }).length;
+    var yaCargados = rows.length - nuevos;
+    var ventasFiltradas = data && data.report && Number(data.report.filteredSales || 0);
+    var ventasMsg = ventasFiltradas ? ' Ademas encontre ' + ventasFiltradas + ' venta(s) MP que no muestro para no duplicarlas.' : '';
+    if (!rows.length) return 'No encontre movimientos en ese rango.' + ventasMsg;
+    if (nuevos) {
+        return 'Encontre ' + nuevos + ' movimiento(s) nuevos para revisar.'
+            + (yaCargados ? ' ' + yaCargados + ' ya estaban cargados.' : '')
+            + ventasMsg;
+    }
+    return 'Encontre ' + rows.length + ' movimiento(s), pero ya estaban cargados.' + ventasMsg;
+}
+
+async function checkMpMovimientosPendingReport() {
+    var saved = getMpMovimientosPendingQuery();
+    if (!saved || saved.status !== 'pending' || _mpMovimientosPollInFlight) return;
+    _mpMovimientosPollInFlight = true;
+    try {
+        var data = await requestMpMovimientosData(saved.from, saved.to);
+        if (data && data.pending) {
+            saved.lastCheckAt = new Date().toISOString();
+            saved.message = data.error || 'Mercado Pago esta generando el reporte.';
+            saveMpMovimientosPendingQuery(saved);
+            return;
+        }
+        if (data && data.success === false) throw new Error(data.error || data.message || 'Mercado Pago no devolvio movimientos.');
+        var rows = prepareMpMovimientosRows(data);
+        var message = mpMovimientosStatusMessage(rows, data);
+        saveMpMovimientosPendingQuery({
+            status: 'ready',
+            from: saved.from,
+            to: saved.to,
+            createdAt: saved.createdAt,
+            readyAt: new Date().toISOString(),
+            items: rows,
+            message: message
+        });
+        var modal = document.getElementById('mp-mov-modal');
+        var modalOpen = modal && modal.classList.contains('open');
+        if (modalOpen
+            && document.getElementById('mp-mov-desde').value === saved.from
+            && document.getElementById('mp-mov-hasta').value === saved.to) {
+            _mpMovimientosItems = rows;
+            renderPreviewMovimientosMp();
+            var status = document.getElementById('mp-mov-status');
+            status.style.color = rows.some(function(m){ return !m.existe; }) ? '#15803d' : '#6b7280';
+            status.textContent = message;
+        } else if (!modalOpen) {
+            showToast('Informe de Movimientos MP listo');
+        }
+    } catch(e) {
+        saveMpMovimientosPendingQuery({
+            status: 'error',
+            from: saved.from,
+            to: saved.to,
+            createdAt: saved.createdAt,
+            lastCheckAt: new Date().toISOString(),
+            message: 'No se pudo consultar Mercado Pago: ' + (e.message || e)
+        });
+    } finally {
+        _mpMovimientosPollInFlight = false;
+    }
 }
 
 function mpMovMarker(m) {
@@ -3786,11 +3974,18 @@ async function consultarMovimientosMp() {
     var confirmWrap = document.getElementById('mp-mov-confirm-wrap');
     var desde = document.getElementById('mp-mov-desde').value;
     var hasta = document.getElementById('mp-mov-hasta').value;
-    var apiUrl = getMpAccountMovementsApiUrl();
     if (!desde || !hasta || desde > hasta) {
         alert('Elegi un rango de fechas valido.');
         return;
     }
+    saveMpMovimientosPendingQuery({
+        status: 'pending',
+        from: desde,
+        to: hasta,
+        createdAt: new Date().toISOString(),
+        lastCheckAt: null,
+        message: 'Consultando movimientos de Mercado Pago...'
+    });
     status.style.color = '#2563eb';
     status.textContent = 'Consultando movimientos de Mercado Pago...';
     preview.innerHTML = '';
@@ -3798,47 +3993,42 @@ async function consultarMovimientosMp() {
     _mpMovimientosItems = [];
 
     try {
-        var headers = { 'Content-Type': 'application/json' };
-        if (apiUrl.indexOf(SB_URL) === 0) {
-            headers.apikey = SB_KEY;
-            headers.Authorization = 'Bearer ' + SB_KEY;
-        }
-        var res = await fetch(apiUrl, {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify({ from: desde, to: hasta, includeSales: false })
-        });
-        var text = await res.text();
-        var data = text ? JSON.parse(text) : {};
-        if (!res.ok) throw new Error(data.error || data.message || ('Error HTTP ' + res.status));
+        var data = await requestMpMovimientosData(desde, hasta);
         if (data && data.pending) {
+            var pendingMessage = data.error || 'Mercado Pago esta generando el reporte. Te aviso cuando este listo.';
+            saveMpMovimientosPendingQuery({
+                status: 'pending',
+                from: desde,
+                to: hasta,
+                createdAt: new Date().toISOString(),
+                lastCheckAt: new Date().toISOString(),
+                message: pendingMessage
+            });
             status.style.color = '#92400e';
-            status.textContent = data.error || 'Mercado Pago esta generando el reporte. Proba de nuevo en un minuto.';
+            status.textContent = pendingMessage + ' Podes cerrar esta ventana y seguir usando la app.';
+            showToast('Movimientos MP quedo buscando en segundo plano');
+            startMpMovimientosBackgroundPolling();
             return;
         }
         if (data && data.success === false) throw new Error(data.error || data.message || 'Mercado Pago no devolvio movimientos.');
 
-        var rows = normalizeMpMovementRows(data);
-        rows.forEach(function(m){ m.existe = mpMovimientoExiste(m); m.descripcionFinal = descripcionMpMovimiento(m); });
+        var rows = prepareMpMovimientosRows(data);
         _mpMovimientosItems = rows;
         renderPreviewMovimientosMp();
-        var nuevos = rows.filter(function(m){ return !m.existe; }).length;
-        var yaCargados = rows.length - nuevos;
-        var ventasFiltradas = data && data.report && Number(data.report.filteredSales || 0);
-        var ventasMsg = ventasFiltradas ? ' Ademas encontre ' + ventasFiltradas + ' venta(s) MP que no muestro para no duplicarlas.' : '';
+        var message = mpMovimientosStatusMessage(rows, data);
+        clearMpMovimientosPendingQuery();
         if (!rows.length) {
             status.style.color = '#92400e';
-            status.textContent = 'No encontre movimientos en ese rango.' + ventasMsg;
-        } else if (nuevos) {
+            status.textContent = message;
+        } else if (rows.some(function(m){ return !m.existe; })) {
             status.style.color = '#15803d';
-            status.textContent = 'Encontre ' + nuevos + ' movimiento(s) nuevos para revisar.'
-                + (yaCargados ? ' ' + yaCargados + ' ya estaban cargados.' : '')
-                + ventasMsg;
+            status.textContent = message;
         } else {
             status.style.color = '#6b7280';
-            status.textContent = 'Encontre ' + rows.length + ' movimiento(s), pero ya estaban cargados.' + ventasMsg;
+            status.textContent = message;
         }
     } catch(e) {
+        clearMpMovimientosPendingQuery();
         status.style.color = '#dc2626';
         status.textContent = 'No se pudo consultar Mercado Pago: ' + (e.message || e);
         alert(status.textContent);
@@ -3961,6 +4151,7 @@ async function cargarMovimientosMpSeleccionados() {
         }
     }
     cerrarMovimientosMp();
+    clearMpMovimientosPendingQuery();
     renderAll();
     showToast((nuevas.length + nuevasTransferencias.length) + ' movimiento(s) MP cargados');
 }
