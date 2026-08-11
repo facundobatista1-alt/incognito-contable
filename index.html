@@ -551,6 +551,10 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>
             Caja USD
         </button>
+        <button class="nav-item" onclick="showPage('inversiones', this)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/></svg>
+            Inversiones
+        </button>
     </nav>
 
     <!-- ═══════════ MAIN ═══════════ -->
@@ -1923,7 +1927,7 @@ async function saveTransfer(e) {
 function renderAll() {
     const active = document.querySelector('.page.active');
     const pageId = active ? active.id.replace('page-','') : 'dashboard';
-    const renders = { dashboard: renderDashboard, historial: renderHistorial, gastos: renderGastos, analisis: renderAnalisis, gastosFijos: renderGastosFijos, ingresos: renderIngresos, transfers: renderTransfers, transferencias: renderTransfers, caja: renderCaja };
+    const renders = { dashboard: renderDashboard, historial: renderHistorial, gastos: renderGastos, analisis: renderAnalisis, gastosFijos: renderGastosFijos, ingresos: renderIngresos, transfers: renderTransfers, transferencias: renderTransfers, caja: renderCaja, inversiones: renderInversiones };
     try {
         if (renders[pageId]) renders[pageId]();
         if (pageId !== 'dashboard') renderDashboard();
@@ -2026,7 +2030,7 @@ function renderDashboard() {
     const balCutoff = getPeriodEndDate();
 
     // Excluir movimientos de Caja de Ahorro del cálculo ARS (sus montos son en USD)
-    const txARS = tx.filter(t => t.cuenta !== 'Caja de Ahorro');
+    const txARS = tx.filter(t => t.cuenta !== 'Caja de Ahorro' && t.cuenta !== 'Inversiones');
     const totalIng = txARS.reduce((s,t) => s + t.ingreso, 0);
     const totalEg  = txARS.reduce((s,t) => s + t.egreso, 0);
     const saldoARS = totalIng - totalEg;
@@ -2034,7 +2038,9 @@ function renderDashboard() {
     const _cajaTC  = parseFloat(localStorage.getItem('hc_usd_tc') || '0');
     const _cajaUSD = getCajaBalance(balCutoff);
     const _cajaARS = _cajaTC > 0 ? _cajaUSD * _cajaTC : 0;
-    const saldo    = saldoARS + _cajaARS;
+    const _invUSD  = getInvestmentBalance(balCutoff);
+    const _invARS  = _cajaTC > 0 ? _invUSD * _cajaTC : 0;
+    const saldo    = saldoARS + _cajaARS + _invARS;
     const ventas   = tx.filter(t => t.categoria === 'Venta de producto' && t.ingreso > 0);
     const ticketAvg = ventas.length ? totalIng / ventas.length : 0;
     const fluxPend  = transactions.filter(t => t.cuenta === 'Flux' && isPendingAt(t, balCutoff));
@@ -2053,8 +2059,10 @@ function renderDashboard() {
         var kpiHtml = ''
             + '<div class="kpi-card"><div class="kpi-label">Total ingresos</div><div class="kpi-value green">' + fmt(totalIng) + '</div></div>'
             + '<div class="kpi-card"><div class="kpi-label">Total egresos</div><div class="kpi-value red">' + fmt(totalEg) + '</div></div>';
-        var saldoSub = (_cajaTC > 0 && _cajaUSD > 0)
-            ? '<div class="kpi-sub">Incluye USD ' + _cajaUSD.toFixed(2) + ' ≈ ' + fmtSigned(_cajaARS) + '</div>'
+        var totalUsd = _cajaUSD + _invUSD;
+        var totalUsdArs = _cajaARS + _invARS;
+        var saldoSub = (_cajaTC > 0 && totalUsd > 0)
+            ? '<div class="kpi-sub">Incluye USD ' + totalUsd.toFixed(2) + ' ≈ ' + fmtSigned(totalUsdArs) + '</div>'
             : '';
         kpiHtml += '<div class="kpi-card"><div class="kpi-label">Saldo neto</div>'
             + '<div class="kpi-value ' + (saldo >= 0 ? 'purple' : 'red') + '">' + fmtSigned(saldo) + '</div>'
@@ -2100,6 +2108,19 @@ function renderDashboard() {
                 + '<div class="account-balance pos" style="font-size:1.15rem">USD ' + fmt(cajaUSD) + '</div>'
                 + arsLine
                 + '</div>';
+        })() +
+        (function() {
+            var invUSD = getInvestmentBalance(balCutoff);
+            var tc = parseFloat(localStorage.getItem('hc_usd_tc') || '0');
+            var arsEq = tc > 0 ? invUSD * tc : null;
+            var arsLine = arsEq !== null
+                ? '<div style="font-size:.75rem;color:#6b7280;margin-top:2px">â‰ˆ ' + fmtSigned(arsEq) + '</div>'
+                : '';
+            return '<div class="account-card" style="border-color:#bfdbfe;background:#eff6ff">'
+                + '<div class="account-name" style="color:#1d4ed8">Inversiones</div>'
+                + '<div class="account-balance pos" style="font-size:1.15rem;color:#2563eb">USD ' + fmt(invUSD) + '</div>'
+                + arsLine
+                + '</div>';
         })();
 
     renderMpCobros();
@@ -2117,8 +2138,8 @@ function renderDashboard() {
             <td class="amount-neg">${t.egreso>0?fmt(t.egreso):''}</td>
           </tr>`).join('');
 
-    renderCharts(tx);
-    renderEvolChart(tx);
+    renderCharts(txARS);
+    renderEvolChart(txARS);
 }
 
 
@@ -3225,6 +3246,15 @@ function getCajaBalance(upTo, ignoreSnapshot) {
     return transactions.reduce((s, t) => {
         if (t.cuenta !== 'Caja de Ahorro') return s;
         if (upTo && t.fecha > upTo) return s;
+        if (t.categoria === 'Rendimiento USD') return s;
+        return s + (t.ingreso || 0) - (t.egreso || 0);
+    }, 0);
+}
+
+function getInvestmentBalance(upTo) {
+    return transactions.reduce((s, t) => {
+        if (t.cuenta !== 'Inversiones') return s;
+        if (upTo && t.fecha > upTo) return s;
         return s + (t.ingreso || 0) - (t.egreso || 0);
     }, 0);
 }
@@ -3255,24 +3285,24 @@ function calcCajaUSD() {
 }
 
 function calcRendDesdeUSD() {
-    const usd = parseFloat(document.getElementById('crend-usd')?.value) || 0;
-    const prev = document.getElementById('crend-preview');
+    const usd = parseFloat(document.getElementById('irend-usd')?.value) || 0;
+    const prev = document.getElementById('irend-preview');
     if (prev && usd > 0) {
         const tc = parseFloat(localStorage.getItem('hc_usd_tc') || '0');
         const arsEq = tc > 0 ? ` ≈ ${fmtSigned(usd * tc)}` : '';
         prev.textContent = `+USD ${usd.toFixed(2)}${arsEq}`;
-        document.getElementById('crend-pct').value = '';
+        document.getElementById('irend-pct').value = '';
     } else if (prev) { prev.textContent = ''; }
 }
 
 function calcRendDesdePct() {
-    const pct  = parseFloat(document.getElementById('crend-pct')?.value) || 0;
-    const base = getCajaBalance();
+    const pct  = parseFloat(document.getElementById('irend-pct')?.value) || 0;
+    const base = getInvestmentBalance();
     const usd  = base * pct / 100;
-    const prev = document.getElementById('crend-preview');
-    const usdEl = document.getElementById('crend-usd');
+    const prev = document.getElementById('irend-preview');
+    const usdEl = document.getElementById('irend-usd');
     if (prev && pct > 0) {
-        prev.textContent = `${pct}% de USD ${fmt(base)} = +USD ${usd.toFixed(2)}`;
+        prev.textContent = `${pct}% de inversiones USD ${fmt(base)} = +USD ${usd.toFixed(2)}`;
         if (usdEl) usdEl.value = usd.toFixed(2);
     } else if (prev) { prev.textContent = ''; }
 }
@@ -3307,23 +3337,72 @@ async function saveCajaDeposito(e) {
     showToast(`✓ Depositado USD ${usd.toFixed(2)} desde ${origen}`);
 }
 
-async function saveCajaRendimiento(e) {
+function calcInversionUSD() {
+    const ars = parseFloat(document.getElementById('icap-ars')?.value) || 0;
+    const tc  = parseFloat(document.getElementById('icap-tc')?.value) || 0;
+    const prev = document.getElementById('icap-usd-preview');
+    if (prev) {
+        if (ars > 0 && tc > 0) {
+            const usd = ars / tc;
+            prev.textContent = `→ USD ${usd.toFixed(2)} invertidos (ARS ${fmt(ars)} ÷ TC ${fmt(tc)})`;
+        } else {
+            prev.textContent = '';
+        }
+    }
+}
+
+function useTcActualInversion() {
+    const tc = localStorage.getItem('hc_usd_tc') || '';
+    const el = document.getElementById('icap-tc');
+    if (el) { el.value = tc; calcInversionUSD(); }
+}
+
+async function saveInversionCapital(e) {
     e.preventDefault();
-    const fecha = document.getElementById('crend-fecha').value;
-    const usd   = parseFloat(document.getElementById('crend-usd').value) || 0;
-    const desc  = document.getElementById('crend-desc').value.trim() || 'Rendimiento';
+    const fecha   = document.getElementById('icap-fecha').value;
+    const origen  = document.getElementById('icap-origen').value;
+    const ars     = parseFloat(document.getElementById('icap-ars').value) || 0;
+    const tc      = parseFloat(document.getElementById('icap-tc').value) || 0;
+    const usd     = tc > 0 ? ars / tc : 0;
+    const desc    = document.getElementById('icap-desc').value.trim() || 'Capital invertido';
+    if (usd <= 0 || ars <= 0) { alert('Ingresá monto y tipo de cambio válidos'); return; }
+
+    const txARS = { id: uid(), fecha, categoria: 'Inversión', cuenta: origen,
+        descripcion: desc + ' - Inversiones USD', nroInterno: '', ingreso: 0, egreso: ars, pendiente: false };
+    const txUSD = { id: uid(), fecha, categoria: 'Capital invertido USD', cuenta: 'Inversiones',
+        descripcion: `${desc} | TC ${tc}`, nroInterno: '', ingreso: parseFloat(usd.toFixed(2)), egreso: 0, pendiente: false };
+
+    transactions.push(txARS, txUSD);
+    transactions.sort((a,b) => a.fecha.localeCompare(b.fecha));
+    localStorage.setItem('hc_tx', JSON.stringify(transactions));
+    if (sb) {
+        await sb.from('transactions').upsert([sbRow(txARS), sbRow(txUSD)]);
+    }
+    localStorage.setItem('hc_usd_tc', String(tc));
+    document.getElementById('form-inv-capital').reset();
+    document.getElementById('icap-usd-preview').textContent = '';
+    renderInversiones();
+    renderDashboard();
+    showToast(`✓ Invertido USD ${usd.toFixed(2)} desde ${origen}`);
+}
+
+async function saveInversionRendimiento(e) {
+    e.preventDefault();
+    const fecha = document.getElementById('irend-fecha').value;
+    const usd   = parseFloat(document.getElementById('irend-usd').value) || 0;
+    const desc  = document.getElementById('irend-desc').value.trim() || 'Rendimiento inversión';
     if (usd <= 0) { alert('Ingresá un monto de rendimiento'); return; }
 
-    const txRend = { id: uid(), fecha, categoria: 'Rendimiento USD', cuenta: 'Caja de Ahorro',
+    const txRend = { id: uid(), fecha, categoria: 'Rendimiento USD', cuenta: 'Inversiones',
         descripcion: desc, nroInterno: '', ingreso: parseFloat(usd.toFixed(2)), egreso: 0, pendiente: false };
 
     transactions.push(txRend);
     transactions.sort((a,b) => a.fecha.localeCompare(b.fecha));
     localStorage.setItem('hc_tx', JSON.stringify(transactions));
     if (sb) await sb.from('transactions').upsert([sbRow(txRend)]);
-    document.getElementById('form-caja-rend').reset();
-    document.getElementById('crend-preview').textContent = '';
-    renderCaja();
+    document.getElementById('form-inv-rend').reset();
+    document.getElementById('irend-preview').textContent = '';
+    renderInversiones();
     renderDashboard();
     showToast(`✓ Rendimiento USD ${usd.toFixed(2)} registrado`);
 }
@@ -3341,14 +3420,13 @@ function renderCaja() {
 
     // Fill default dates
     const today = todayLocal();
-    ['cdep-fecha','crend-fecha'].forEach(id => { const el = document.getElementById(id); if (el && !el.value) el.value = today; });
+    ['cdep-fecha'].forEach(id => { const el = document.getElementById(id); if (el && !el.value) el.value = today; });
 
     // Caja transactions
     const cajaTx = transactions.filter(t => t.cuenta === 'Caja de Ahorro').slice().reverse();
     const totalUSD = getCajaBalance();
     const arsEq = tc > 0 ? totalUSD * tc : null;
     const totalDep = transactions.filter(t => t.cuenta === 'Caja de Ahorro' && t.categoria === 'Depósito USD').reduce((s,t) => s + t.ingreso, 0);
-    const totalRend = transactions.filter(t => t.cuenta === 'Caja de Ahorro' && t.categoria === 'Rendimiento USD').reduce((s,t) => s + t.ingreso, 0);
 
     (function() {
         var arsLine = arsEq !== null
@@ -3364,9 +3442,10 @@ function renderCaja() {
             + '<div class="account-name">Depositado</div>'
             + '<div class="account-balance pos">USD ' + totalDep.toFixed(2) + '</div>'
             + '</div>'
-            + '<div class="account-card" style="border-color:#fde68a;background:#fefce8">'
-            + '<div class="account-name" style="color:#a16207">Rendimiento acumulado</div>'
-            + '<div class="account-balance pos" style="color:#d97706">USD ' + totalRend.toFixed(2) + '</div>'
+            + '<div class="account-card" style="border-color:#bfdbfe;background:#eff6ff">'
+            + '<div class="account-name" style="color:#1d4ed8">Tipo</div>'
+            + '<div class="account-balance pos" style="color:#2563eb;font-size:1.05rem">Reserva</div>'
+            + '<div style="font-size:.78rem;color:#6b7280;margin-top:3px">Sin rendimiento mensual</div>'
             + '</div>';
     })();
 
@@ -3406,6 +3485,85 @@ function renderCaja() {
                 + '</tr>';
         });
         document.getElementById('caja-historial').innerHTML =
+            '<table style="width:100%;border-collapse:collapse;font-size:.88rem">'
+            + '<thead><tr style="border-bottom:2px solid #e5e7eb">'
+            + '<th style="text-align:left;padding:6px 8px">Fecha</th>'
+            + '<th style="text-align:left;padding:6px 8px">Tipo</th>'
+            + '<th style="text-align:right;padding:6px 8px">Tipo de cambio</th>'
+            + '<th style="text-align:right;padding:6px 8px">ARS</th>'
+            + '<th style="text-align:right;padding:6px 8px">USD</th>'
+            + '</tr></thead>'
+            + '<tbody>' + rows.join('') + '</tbody>'
+            + '</table>';
+    })();
+}
+
+function renderInversiones() {
+    const tc = parseFloat(localStorage.getItem('hc_usd_tc') || '0');
+
+    const sel = document.getElementById('icap-origen');
+    if (sel && sel.options.length <= 1) {
+        ACCOUNTS.forEach(a => { const o = document.createElement('option'); o.value = a; o.textContent = a; sel.appendChild(o); });
+    }
+
+    const today = todayLocal();
+    ['icap-fecha','irend-fecha'].forEach(id => { const el = document.getElementById(id); if (el && !el.value) el.value = today; });
+
+    const invTx = transactions.filter(t => t.cuenta === 'Inversiones').slice().reverse();
+    const totalUSD = getInvestmentBalance();
+    const arsEq = tc > 0 ? totalUSD * tc : null;
+    const totalCapital = transactions.filter(t => t.cuenta === 'Inversiones' && t.categoria === 'Capital invertido USD').reduce((s,t) => s + t.ingreso, 0);
+    const totalRend = transactions.filter(t => t.cuenta === 'Inversiones' && t.categoria === 'Rendimiento USD').reduce((s,t) => s + t.ingreso, 0);
+
+    (function() {
+        var arsLine = arsEq !== null
+            ? '<div style="font-size:.78rem;color:#6b7280;margin-top:3px">≈ ' + fmtSigned(arsEq) + '</div>'
+            : '';
+        document.getElementById('inv-resumen').innerHTML =
+            '<div class="account-card" style="border-color:#bfdbfe;background:#eff6ff">'
+            + '<div class="account-name" style="color:#1d4ed8">Saldo invertido</div>'
+            + '<div class="account-balance pos" style="font-size:1.3rem;color:#2563eb">USD ' + totalUSD.toFixed(2) + '</div>'
+            + arsLine
+            + '</div>'
+            + '<div class="account-card">'
+            + '<div class="account-name">Capital invertido</div>'
+            + '<div class="account-balance pos">USD ' + totalCapital.toFixed(2) + '</div>'
+            + '</div>'
+            + '<div class="account-card" style="border-color:#fde68a;background:#fefce8">'
+            + '<div class="account-name" style="color:#a16207">Rendimiento acumulado</div>'
+            + '<div class="account-balance pos" style="color:#d97706">USD ' + totalRend.toFixed(2) + '</div>'
+            + '</div>';
+    })();
+
+    if (invTx.length === 0) {
+        document.getElementById('inv-historial').innerHTML = '<p style="color:#9ca3af;text-align:center;padding:20px">No hay inversiones registradas aún</p>';
+        return;
+    }
+    (function() {
+        var rows = invTx.map(function(t) {
+            var esRend = t.categoria === 'Rendimiento USD';
+            var tcMatch = String(t.descripcion || '').match(/TC\s+([\d.]+)/);
+            var tcNum = tcMatch ? parseFloat(tcMatch[1]) : NaN;
+            var usdMov = t.ingreso > 0 ? t.ingreso : t.egreso;
+            var arsEquiv = (!isNaN(tcNum) && tcNum > 0) ? usdMov * tcNum : null;
+            var badgeStyle = esRend
+                ? 'background:#fef9c3;color:#a16207'
+                : 'background:#dbeafe;color:#1d4ed8';
+            var tcCell = (!isNaN(tcNum) && tcNum > 0)
+                ? '$' + fmt(tcNum)
+                : '<span style="color:#d1d5db">—</span>';
+            var arsCell = arsEquiv !== null
+                ? fmtSigned(-arsEquiv)
+                : '<span style="color:#9ca3af;font-size:.8rem">' + stripCashMeta(t.descripcion || '') + '</span>';
+            return '<tr style="border-bottom:1px solid #f3f4f6">'
+                + '<td style="padding:6px 8px;white-space:nowrap">' + fmtDate(t.fecha) + '</td>'
+                + '<td style="padding:6px 8px"><span style="' + badgeStyle + ';border-radius:4px;padding:2px 6px;font-size:.8rem">' + (t.categoria || '') + '</span></td>'
+                + '<td style="padding:6px 8px;text-align:right;color:#6b7280">' + tcCell + '</td>'
+                + '<td style="padding:6px 8px;text-align:right;color:#6b7280">' + arsCell + '</td>'
+                + '<td style="padding:6px 8px;text-align:right;font-weight:600;color:#15803d">+USD ' + Number(t.ingreso || 0).toFixed(2) + '</td>'
+                + '</tr>';
+        });
+        document.getElementById('inv-historial').innerHTML =
             '<table style="width:100%;border-collapse:collapse;font-size:.88rem">'
             + '<thead><tr style="border-bottom:2px solid #e5e7eb">'
             + '<th style="text-align:left;padding:6px 8px">Fecha</th>'
@@ -4514,26 +4672,10 @@ function renderMpCobros() {
                 </form>
             </div>
 
-            <!-- Rendimiento -->
+            <!-- Reserva -->
             <div style="background:var(--surface,#fff);border:1px solid #e5e7eb;border-radius:12px;padding:18px">
-                <h3 style="margin:0 0 14px;font-size:1rem;color:#1e3a5f">Rendimiento mensual</h3>
-                <form id="form-caja-rend" onsubmit="saveCajaRendimiento(event)">
-                    <div style="display:flex;flex-direction:column;gap:10px">
-                        <input type="date" id="crend-fecha" required style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px">
-                        <div style="display:flex;gap:8px">
-                            <input type="number" id="crend-usd" placeholder="USD ganados" min="0" step="0.01"
-                                style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px;flex:1"
-                                oninput="calcRendDesdeUSD()">
-                            <span style="align-self:center;color:#6b7280;font-size:.85rem">ó</span>
-                            <input type="number" id="crend-pct" placeholder="% mensual" min="0" step="0.01"
-                                style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px;width:110px"
-                                oninput="calcRendDesdePct()">
-                        </div>
-                        <div id="crend-preview" style="background:#fefce8;border-radius:6px;padding:8px 10px;font-size:.9rem;color:#a16207;font-weight:600;min-height:36px"></div>
-                        <input type="text" id="crend-desc" placeholder="Descripción (opcional)" style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px">
-                        <button type="submit" style="background:#d97706;color:#fff;border:none;border-radius:8px;padding:9px;font-size:.95rem;font-weight:600;cursor:pointer">📈 Registrar rendimiento</button>
-                    </div>
-                </form>
+                <h3 style="margin:0 0 14px;font-size:1rem;color:#1e3a5f">Reserva USD</h3>
+                <p style="font-size:.9rem;color:#6b7280;line-height:1.45;margin:0">Esta caja queda solo como reserva. No calcula ni registra rendimiento mensual. Para capital con rendimiento usá la pestaña Inversiones.</p>
             </div>
         </div>
 
@@ -4541,6 +4683,60 @@ function renderMpCobros() {
         <div style="background:var(--surface,#fff);border:1px solid #e5e7eb;border-radius:12px;padding:18px">
             <h3 style="margin:0 0 14px;font-size:1rem;color:#1e3a5f">Historial Caja de Ahorro</h3>
             <div id="caja-historial" style="overflow-x:auto"></div>
+        </div>
+    </div>
+
+    <!-- INVERSIONES PAGE -->
+    <div id="page-inversiones" class="page">
+        <div class="page-header">
+            <h2>📈 Inversiones</h2>
+            <p>Capital invertido en USD y rendimientos mensuales</p>
+        </div>
+
+        <div id="inv-resumen" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px"></div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px" class="caja-forms">
+            <div style="background:var(--surface,#fff);border:1px solid #e5e7eb;border-radius:12px;padding:18px">
+                <h3 style="margin:0 0 14px;font-size:1rem;color:#1e3a5f">Invertir capital USD</h3>
+                <form id="form-inv-capital" onsubmit="saveInversionCapital(event)">
+                    <div style="display:flex;flex-direction:column;gap:10px">
+                        <input type="date" id="icap-fecha" required style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px">
+                        <select id="icap-origen" required style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px">
+                            <option value="">Cuenta origen (ARS)</option>
+                        </select>
+                        <input type="number" id="icap-ars" placeholder="Monto en ARS" min="0" required style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px" oninput="calcInversionUSD()">
+                        <div style="display:flex;align-items:center;gap:8px">
+                            <input type="number" id="icap-tc" placeholder="Tipo de cambio" min="1" required style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px;flex:1" oninput="calcInversionUSD()">
+                            <button type="button" onclick="useTcActualInversion()" title="Usar TC actual" style="background:#e0f2fe;border:none;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:.8rem;color:#0369a1">Usar actual</button>
+                        </div>
+                        <input type="text" id="icap-desc" placeholder="Descripción (opcional)" style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px">
+                        <div id="icap-usd-preview" style="background:#eff6ff;border-radius:6px;padding:8px 10px;font-size:.9rem;color:#1d4ed8;font-weight:600;min-height:36px"></div>
+                        <button type="submit" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:9px;font-size:.95rem;font-weight:600;cursor:pointer">Invertir capital</button>
+                    </div>
+                </form>
+            </div>
+
+            <div style="background:var(--surface,#fff);border:1px solid #e5e7eb;border-radius:12px;padding:18px">
+                <h3 style="margin:0 0 14px;font-size:1rem;color:#1e3a5f">Rendimiento mensual</h3>
+                <form id="form-inv-rend" onsubmit="saveInversionRendimiento(event)">
+                    <div style="display:flex;flex-direction:column;gap:10px">
+                        <input type="date" id="irend-fecha" required style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px">
+                        <div style="display:flex;gap:8px">
+                            <input type="number" id="irend-usd" placeholder="USD ganados" min="0" step="0.01" style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px;flex:1" oninput="calcRendDesdeUSD()">
+                            <span style="align-self:center;color:#6b7280;font-size:.85rem">ó</span>
+                            <input type="number" id="irend-pct" placeholder="% mensual" min="0" step="0.01" style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px;width:110px" oninput="calcRendDesdePct()">
+                        </div>
+                        <div id="irend-preview" style="background:#fefce8;border-radius:6px;padding:8px 10px;font-size:.9rem;color:#a16207;font-weight:600;min-height:36px"></div>
+                        <input type="text" id="irend-desc" placeholder="Descripción (opcional)" style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px">
+                        <button type="submit" style="background:#d97706;color:#fff;border:none;border-radius:8px;padding:9px;font-size:.95rem;font-weight:600;cursor:pointer">Registrar rendimiento</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div style="background:var(--surface,#fff);border:1px solid #e5e7eb;border-radius:12px;padding:18px">
+            <h3 style="margin:0 0 14px;font-size:1rem;color:#1e3a5f">Historial Inversiones</h3>
+            <div id="inv-historial" style="overflow-x:auto"></div>
         </div>
     </div>
 
