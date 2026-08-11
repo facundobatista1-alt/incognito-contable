@@ -1445,7 +1445,7 @@ function showPage(page, el) {
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     document.getElementById('page-' + page).classList.add('active');
     if (el) el.classList.add('active');
-    const renders = { dashboard: renderDashboard, historial: renderHistorial, gastos: renderGastos, analisis: renderAnalisis, gastosFijos: renderGastosFijos, ingresos: renderIngresos, transferencias: renderTransfers };
+    const renders = { dashboard: renderDashboard, historial: renderHistorial, gastos: renderGastos, analisis: renderAnalisis, gastosFijos: renderGastosFijos, ingresos: renderIngresos, transferencias: renderTransfers, caja: renderCaja, inversiones: renderInversiones };
     if (renders[page]) renders[page]();
     if (typeof updateMpMovimientosBadge === 'function') updateMpMovimientosBadge();
 }
@@ -1946,7 +1946,7 @@ function deleteTx(id) {
     _del.add(id); localStorage.setItem('hc_deleted_tx', JSON.stringify([..._del]));
     if (sb) sb.from('transactions').delete().eq('id', id).then(() => {});
     const active = document.querySelector('.page.active').id.replace('page-','');
-    const renders = { dashboard: renderDashboard, historial: renderHistorial, gastos: renderGastos, analisis: renderAnalisis, ingresos: renderIngresos };
+    const renders = { dashboard: renderDashboard, historial: renderHistorial, gastos: renderGastos, analisis: renderAnalisis, gastosFijos: renderGastosFijos, ingresos: renderIngresos, transferencias: renderTransfers, caja: renderCaja, inversiones: renderInversiones };
     if (renders[active]) renders[active]();
 }
 function deleteTr(id) {
