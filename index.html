@@ -1399,7 +1399,7 @@ function sbSync(txIds, trIds) {
     }, 1200);
 }
 
-function descargarBackup() {
+async function descargarBackup() {
     const fecha = todayLocal();
     const backup = {
         exportado: new Date().toISOString(),
@@ -1409,15 +1409,38 @@ function descargarBackup() {
         fixedUsdRate: typeof fixedUsdRate !== 'undefined' ? fixedUsdRate : 0,
         customFinancials: typeof customFinancials !== 'undefined' ? customFinancials : []
     };
+    const fileName = 'incognito-contable-backup-' + fecha + '.json';
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+
+    if (window.showSaveFilePicker) {
+        try {
+            const handle = await window.showSaveFilePicker({
+                suggestedName: fileName,
+                types: [{
+                    description: 'Backup contable JSON',
+                    accept: { 'application/json': ['.json'] }
+                }]
+            });
+            const writable = await handle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+            showToast('✓ Backup guardado correctamente');
+            return;
+        } catch (err) {
+            if (err && err.name === 'AbortError') return;
+            console.warn('No se pudo guardar con selector de archivo:', err);
+        }
+    }
+
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'incognito-contable-backup-' + fecha + '.json';
+    a.download = fileName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    showToast('✓ Backup descargado');
 }
 
 // -- local state --------------------------------------------------------------
