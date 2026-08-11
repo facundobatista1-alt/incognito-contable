@@ -3274,6 +3274,78 @@ function getInvestmentBalanceByCurrency(moneda, upTo) {
     return moneda === 'ARS' ? getInvestmentArsBalance(upTo) : getInvestmentBalance(upTo);
 }
 
+function getInvestmentNameFromText(text) {
+    return String(text || '').split('|')[0].replace(' - Inversiones USD', '').trim() || 'Inversión';
+}
+
+function getInvestmentNameFromYield(text) {
+    const m = String(text || '').match(/Inversion:\s*([^|]+)/i);
+    return m ? m[1].trim() : '';
+}
+
+function getInvestmentOptions(moneda) {
+    const map = new Map();
+    if (moneda === 'ARS') {
+        transfers.forEach(function(t) {
+            if (t.destino !== 'Inversiones ARS') return;
+            const name = getInvestmentNameFromText(t.descripcion);
+            map.set(name, (map.get(name) || 0) + Number(t.monto || 0));
+        });
+        transfers.forEach(function(t) {
+            if (t.origen !== 'Inversiones ARS') return;
+            const name = getInvestmentNameFromText(t.descripcion);
+            map.set(name, (map.get(name) || 0) - Number(t.monto || 0));
+        });
+        transactions.forEach(function(t) {
+            if (t.cuenta !== 'Inversiones ARS') return;
+            const name = getInvestmentNameFromYield(t.descripcion);
+            if (!name) return;
+            map.set(name, (map.get(name) || 0) + Number(t.ingreso || 0) - Number(t.egreso || 0));
+        });
+    } else {
+        transactions.forEach(function(t) {
+            if (t.cuenta !== 'Inversiones' || t.categoria !== 'Capital invertido USD') return;
+            const name = getInvestmentNameFromText(t.descripcion);
+            map.set(name, (map.get(name) || 0) + Number(t.ingreso || 0) - Number(t.egreso || 0));
+        });
+        transactions.forEach(function(t) {
+            if (t.cuenta !== 'Inversiones' || t.categoria !== 'Rendimiento USD') return;
+            const name = getInvestmentNameFromYield(t.descripcion);
+            if (!name) return;
+            map.set(name, (map.get(name) || 0) + Number(t.ingreso || 0) - Number(t.egreso || 0));
+        });
+    }
+    return Array.from(map.entries())
+        .filter(function(item){ return Math.abs(item[1]) > 0.0001; })
+        .map(function(item){ return { name: item[0], balance: item[1] }; })
+        .sort(function(a,b){ return a.name.localeCompare(b.name); });
+}
+
+function populateInvestmentYieldSelect() {
+    const moneda = document.getElementById('irend-moneda')?.value || 'USD';
+    const sel = document.getElementById('irend-inversion');
+    if (!sel) return;
+    const current = sel.value;
+    const options = getInvestmentOptions(moneda);
+    sel.innerHTML = '<option value="">Elegí inversión...</option>';
+    options.forEach(function(item) {
+        const o = document.createElement('option');
+        o.value = item.name;
+        o.textContent = moneda === 'USD'
+            ? item.name + ' - USD ' + item.balance.toFixed(2)
+            : item.name + ' - ' + fmtSigned(item.balance);
+        sel.appendChild(o);
+    });
+    if (current && options.some(function(item){ return item.name === current; })) sel.value = current;
+}
+
+function getSelectedInvestmentBalance(moneda) {
+    const name = document.getElementById('irend-inversion')?.value || '';
+    if (!name) return 0;
+    const item = getInvestmentOptions(moneda).find(function(opt){ return opt.name === name; });
+    return item ? item.balance : 0;
+}
+
 function setInvestmentCapitalCurrency() {
     const moneda = document.getElementById('icap-moneda')?.value || 'USD';
     const tcWrap = document.getElementById('icap-tc-wrap');
@@ -3291,6 +3363,7 @@ function setInvestmentYieldCurrency() {
     const moneda = document.getElementById('irend-moneda')?.value || 'USD';
     const amount = document.getElementById('irend-usd');
     if (amount) amount.placeholder = moneda === 'USD' ? 'USD ganados' : 'ARS ganados';
+    populateInvestmentYieldSelect();
     calcRendDesdeUSD();
 }
 
@@ -3336,14 +3409,14 @@ function calcRendDesdeUSD() {
 function calcRendDesdePct() {
     const moneda = document.getElementById('irend-moneda')?.value || 'USD';
     const pct  = parseFloat(document.getElementById('irend-pct')?.value) || 0;
-    const base = getInvestmentBalanceByCurrency(moneda);
+    const base = getSelectedInvestmentBalance(moneda);
     const gain = base * pct / 100;
     const prev = document.getElementById('irend-preview');
     const usdEl = document.getElementById('irend-usd');
     if (prev && pct > 0) {
         prev.textContent = moneda === 'USD'
-            ? `${pct}% de inversiones USD ${fmt(base)} = +USD ${gain.toFixed(2)}`
-            : `${pct}% de inversiones ARS ${fmt(base)} = +${fmtSigned(gain)}`;
+            ? `${pct}% de esta inversión USD ${fmt(base)} = +USD ${gain.toFixed(2)}`
+            : `${pct}% de esta inversión ARS ${fmt(base)} = +${fmtSigned(gain)}`;
         if (usdEl) usdEl.value = gain.toFixed(2);
     } else if (prev) { prev.textContent = ''; }
 }
@@ -3449,14 +3522,16 @@ async function saveInversionRendimiento(e) {
     e.preventDefault();
     const fecha = document.getElementById('irend-fecha').value;
     const moneda = document.getElementById('irend-moneda')?.value || 'USD';
+    const inversion = document.getElementById('irend-inversion')?.value || '';
     const amount = parseFloat(document.getElementById('irend-usd').value) || 0;
     const desc  = document.getElementById('irend-desc').value.trim() || 'Rendimiento inversion';
+    if (!inversion) { alert('Elegí a qué inversión corresponde el rendimiento'); return; }
     if (amount <= 0) { alert('Ingresa un monto de rendimiento'); return; }
 
     const txRend = { id: uid(), fecha,
         categoria: moneda === 'ARS' ? 'Rendimiento inversion' : 'Rendimiento USD',
         cuenta: moneda === 'ARS' ? 'Inversiones ARS' : 'Inversiones',
-        descripcion: desc, nroInterno: '', ingreso: parseFloat(amount.toFixed(2)), egreso: 0, pendiente: false };
+        descripcion: desc + ' | Inversion: ' + inversion, nroInterno: '', ingreso: parseFloat(amount.toFixed(2)), egreso: 0, pendiente: false };
 
     transactions.push(txRend);
     transactions.sort((a,b) => a.fecha.localeCompare(b.fecha));
@@ -3576,6 +3651,7 @@ function renderInversiones() {
     ['icap-fecha','irend-fecha'].forEach(id => { const el = document.getElementById(id); if (el && !el.value) el.value = today; });
     if (document.getElementById('icap-moneda')) setInvestmentCapitalCurrency();
     if (document.getElementById('irend-moneda')) setInvestmentYieldCurrency();
+    populateInvestmentYieldSelect();
 
     const totalUSD = getInvestmentBalance();
     const totalARS = getInvestmentArsBalance();
@@ -4824,6 +4900,9 @@ function renderMpCobros() {
                         <select id="irend-moneda" onchange="setInvestmentYieldCurrency()" style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px">
                             <option value="USD">Rendimiento en dólares</option>
                             <option value="ARS">Rendimiento en pesos</option>
+                        </select>
+                        <select id="irend-inversion" required onchange="calcRendDesdePct()" style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px">
+                            <option value="">Elegí inversión...</option>
                         </select>
                         <div style="display:flex;gap:8px">
                             <input type="number" id="irend-usd" placeholder="USD ganados" min="0" step="0.01" style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px;flex:1" oninput="calcRendDesdeUSD()">
