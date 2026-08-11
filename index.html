@@ -3894,9 +3894,15 @@ function applyMpMovementUiRules(m) {
     if (text.indexOf('mi correo') >= 0 || text.indexOf('micorreo') >= 0) {
         m.descripcionEditable = 'Correo Argentino';
         m.categoria = 'Envíos';
-    } else if (text.indexOf('envio mercado pago') >= 0 && text.indexOf('paquetes') >= 0) {
+    } else if (text.indexOf('andreani') >= 0 || (text.indexOf('envio mercado pago') >= 0 && text.indexOf('paquetes') >= 0)) {
         m.descripcionEditable = 'Andreani';
         m.categoria = 'Envíos';
+    } else if (text.indexOf('mercado libre') >= 0 && text.indexOf('compra') >= 0) {
+        m.descripcionEditable = 'Mercado Libre';
+        m.categoria = 'Productos';
+    } else if (text.indexOf('transferencia enviada') >= 0 || text.indexOf('intra mp') >= 0 || String(m.transactionType || '').toUpperCase().indexOf('TRANSFER') >= 0) {
+        m.descripcionEditable = desc || 'Transferencia enviada Mercado Pago';
+        m.categoria = 'Productos';
     } else if (text.indexOf('credito mercado pago') >= 0) {
         m.descripcionEditable = 'Rendimientos';
     } else if (text.indexOf('retiro mercado pago') >= 0 || String(m.transactionType || '').toUpperCase().indexOf('PAYOUT') >= 0) {
@@ -3918,7 +3924,11 @@ function mpCategorySelectHtml(idx, selected) {
 
 function isMpPayoutMovement(m) {
     var text = String((m && (m.transactionType || m.descripcion || m.descripcionEditable)) || '').toLowerCase();
-    return text.indexOf('payout') >= 0 || text.indexOf('retiro mercado pago') >= 0;
+    return text.indexOf('payout') >= 0
+        || text.indexOf('retiro mercado pago') >= 0
+        || text.indexOf('transfer') >= 0
+        || text.indexOf('transferencia enviada') >= 0
+        || text.indexOf('intra mp') >= 0;
 }
 
 function mpAccountSelectHtml(idx, selected, disabled) {
