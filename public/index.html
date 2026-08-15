@@ -807,6 +807,7 @@
                         <div class="concept-item"><strong>Saldo de caja</strong><p>Diferencia entre ingresos y egresos de caja del mes. Si es negativo, salió más plata de la que entró.</p></div>
                         <div class="concept-item"><strong>Activo</strong><p>Todo lo que la empresa posee o tiene derecho a cobrar. Se divide para entender qué tan disponible está cada recurso.</p></div>
                         <div class="concept-item"><strong>Activo circulante</strong><p>Recursos de corto plazo: caja, bancos, cuentas por cobrar e inventario. Es lo más útil para medir liquidez y operación diaria.</p></div>
+                        <div class="concept-item"><strong>Inversiones a corto plazo</strong><p>Capital colocado en instrumentos rescatables o de disponibilidad relativamente rápida. Sigue siendo un activo, aunque no esté en caja o banco.</p></div>
                         <div class="concept-item"><strong>Activo fijo</strong><p>Bienes que ayudan a operar y no se compran para vender rápido: escritorios, impresora, estanterías, prensa, computadoras o maquinaria.</p></div>
                         <div class="concept-item"><strong>Activo diferido</strong><p>Pagos o beneficios que corresponden a períodos futuros. Si no hay anticipos, seguros o gastos prepagos, suele estar en cero.</p></div>
                         <div class="concept-item"><strong>Pasivo</strong><p>Todo lo que la empresa debe pagar o devolver. Sirve para ver cuánto de los activos está financiado con deuda u obligaciones.</p></div>
@@ -814,6 +815,7 @@
                         <div class="concept-item"><strong>Pasivo a largo plazo</strong><p>Deudas cuyo vencimiento no es inmediato. Si no hay préstamos largos o financiación extendida, queda en cero.</p></div>
                         <div class="concept-item"><strong>Capital contable</strong><p>La parte del negocio que pertenece a los dueños: activos menos pasivos. En el balance cierra la ecuación activo = pasivo + capital.</p></div>
                         <div class="concept-item"><strong>Capital social</strong><p>Aporte propio o patrimonio base del negocio. En esta hoja suele absorber el valor neto necesario para que el balance cierre.</p></div>
+                        <div class="concept-item"><strong>Reservas</strong><p>Parte del patrimonio que se decide separar para protección, inversión futura o estabilidad. No es una deuda: sigue perteneciendo al negocio.</p></div>
                         <div class="concept-item"><strong>Resultados del ejercicio</strong><p>Ganancia o pérdida generada en el período. Con el tiempo puede pasar a resultados acumulados o patrimonio.</p></div>
                     </div>
                 </div>
@@ -822,7 +824,8 @@
                 <div class="form-card">
                     <form id="form-estado-financiero" onsubmit="saveEstadoFinanciero(event)">
                         <div class="form-grid" style="margin-bottom:16px">
-                            <div class="form-group"><label>Mes</label><input type="month" id="ef-periodo" required></div>
+                            <div class="form-group"><label>Mes</label><input type="month" id="ef-periodo" required oninput="autofillEstadoFinancieroBalance(true)" onchange="autofillEstadoFinancieroBalance(true)"></div>
+                            <div class="form-group"><label>Saldos del mes</label><button type="button" class="btn btn-outline" onclick="autofillEstadoFinancieroBalance(true)">Completar saldos</button></div>
                         </div>
                         <div class="analysis-form-block">
                             <h3>Estado de resultado</h3>
@@ -840,12 +843,14 @@
                         <div class="analysis-form-block">
                             <h3>Balance general</h3>
                             <div class="form-grid">
-                                <div class="form-group"><label>Caja efectivo</label><input type="text" inputmode="decimal" id="ef-caja" onblur="evalMonto(this)"></div>
-                                <div class="form-group"><label>Bancos</label><input type="text" inputmode="decimal" id="ef-bancos" onblur="evalMonto(this)"></div>
-                                <div class="form-group"><label>Cuentas por cobrar</label><input type="text" inputmode="decimal" id="ef-cxc" onblur="evalMonto(this)"></div>
+                                <div class="form-group"><label>Caja efectivo</label><input type="text" inputmode="decimal" id="ef-caja" oninput="this.dataset.autofilled='0'" onblur="evalMonto(this)"></div>
+                                <div class="form-group"><label>Bancos</label><input type="text" inputmode="decimal" id="ef-bancos" oninput="this.dataset.autofilled='0'" onblur="evalMonto(this)"></div>
+                                <div class="form-group"><label>Inversiones a corto plazo</label><input type="text" inputmode="decimal" id="ef-inversiones-corto" oninput="this.dataset.autofilled='0'" onblur="evalMonto(this)"></div>
+                                <div class="form-group"><label>Cuentas por cobrar</label><input type="text" inputmode="decimal" id="ef-cxc" oninput="this.dataset.autofilled='0'" onblur="evalMonto(this)"></div>
                                 <div class="form-group"><label>Inventario</label><input type="text" inputmode="decimal" id="ef-inventario" onblur="evalMonto(this)"></div>
                                 <div class="form-group"><label>Crédito</label><input type="text" inputmode="decimal" id="ef-credito" onblur="evalMonto(this)"></div>
                                 <div class="form-group"><label>Tarjetas de crédito</label><input type="text" inputmode="decimal" id="ef-tarjetas" onblur="evalMonto(this)"></div>
+                                <div class="form-group"><label>Reservas</label><input type="text" inputmode="decimal" id="ef-reservas" onblur="evalMonto(this)"></div>
                             </div>
                             <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:16px 0 8px">
                                 <h3 style="margin:0">Activos fijos adicionales</h3>
@@ -2364,10 +2369,78 @@ function showAnalysisTab(tab, el) {
     if (tab === 'fijos') renderGastosFijos();
 }
 
+function monthEndFromPeriod(periodo) {
+    if (!/^\d{4}-\d{2}$/.test(String(periodo || ''))) return '';
+    const parts = periodo.split('-').map(Number);
+    return todayFromDate(new Date(parts[0], parts[1], 0));
+}
+
+function getEstadoFinancieroCutoff(periodo) {
+    const monthEnd = monthEndFromPeriod(periodo);
+    if (!monthEnd) return '';
+    const today = todayLocal();
+    return monthEnd > today ? today : monthEnd;
+}
+
+function setEstadoAutofillInput(id, value, force) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const current = String(el.value || '').trim();
+    if (!force && current && el.dataset.autofilled !== '1') return;
+    const amount = Math.round(Number(value || 0));
+    el.value = String(amount);
+    el.dataset.autofilled = '1';
+}
+
+function getEstadoBalanceAutofill(periodo) {
+    const cutoff = getEstadoFinancieroCutoff(periodo);
+    if (!cutoff) return null;
+    const efectivoAccounts = ['Efectivo MV', 'Efectivo FB'];
+    const bankAccounts = ['Galicia FB', 'Uala MV', 'Provincia FB', 'Uala EG', 'Uala AD', 'ARQ'];
+    const cajaEfectivo = efectivoAccounts.reduce(function(s, account) {
+        return s + getAccountBalance(account, cutoff);
+    }, 0);
+    const bancos = bankAccounts.reduce(function(s, account) {
+        return s + getAccountBalance(account, cutoff);
+    }, 0);
+    const mpPorCobrar = transactions.filter(function(t) {
+        return t.cuenta === 'MP FB' && isPendingAt(t, cutoff);
+    }).reduce(function(s, t) {
+        return s + Number(t.ingreso || 0);
+    }, 0);
+    const fluxPendientes = transactions.filter(function(t) {
+        return t.cuenta === 'Flux' && isPendingAt(t, cutoff);
+    }).length;
+    const fluxPorCobrar = fluxPendientes * getFluxHistoricalAverage();
+    const tc = parseFloat(localStorage.getItem('hc_usd_tc') || '0');
+    const inversionesUsdArs = tc > 0 ? getInvestmentBalance(cutoff) * tc : 0;
+    const inversiones = getInvestmentArsBalance(cutoff) + inversionesUsdArs;
+    return {
+        cutoff,
+        cajaEfectivo,
+        bancos,
+        cuentasPorCobrar: mpPorCobrar + fluxPorCobrar,
+        inversiones
+    };
+}
+
+function autofillEstadoFinancieroBalance(force) {
+    const periodo = document.getElementById('ef-periodo')?.value || '';
+    const values = getEstadoBalanceAutofill(periodo);
+    if (!values) return;
+    setEstadoAutofillInput('ef-caja', values.cajaEfectivo, force);
+    setEstadoAutofillInput('ef-bancos', values.bancos, force);
+    setEstadoAutofillInput('ef-cxc', values.cuentasPorCobrar, force);
+    setEstadoAutofillInput('ef-inversiones-corto', values.inversiones, force);
+}
+
 function clearEstadoFinancieroForm() {
-    ['ef-periodo','ef-ventas','ef-cantidad','ef-costos','ef-envios','ef-publicidad','ef-comision-tn','ef-comision-mp','ef-otros-gastos','ef-caja','ef-bancos','ef-cxc','ef-inventario','ef-credito','ef-tarjetas','ef-ingresos-caja','ef-egresos-caja'].forEach(id => {
+    ['ef-periodo','ef-ventas','ef-cantidad','ef-costos','ef-envios','ef-publicidad','ef-comision-tn','ef-comision-mp','ef-otros-gastos','ef-caja','ef-bancos','ef-inversiones-corto','ef-cxc','ef-inventario','ef-credito','ef-tarjetas','ef-reservas','ef-ingresos-caja','ef-egresos-caja'].forEach(id => {
         const el = document.getElementById(id);
-        if (el) el.value = '';
+        if (el) {
+            el.value = '';
+            delete el.dataset.autofilled;
+        }
     });
     const fixedWrap = document.getElementById('ef-fixed-assets');
     if (fixedWrap) fixedWrap.innerHTML = '';
@@ -2410,10 +2483,12 @@ function saveEstadoFinanciero(e) {
     const otrosGastos = parseMoneyInput(document.getElementById('ef-otros-gastos').value);
     const caja = parseMoneyInput(document.getElementById('ef-caja').value);
     const bancos = parseMoneyInput(document.getElementById('ef-bancos').value);
+    const inversionesCortoPlazo = parseMoneyInput(document.getElementById('ef-inversiones-corto').value);
     const cuentasPorCobrar = parseMoneyInput(document.getElementById('ef-cxc').value);
     const inventario = parseMoneyInput(document.getElementById('ef-inventario').value);
     const credito = parseMoneyInput(document.getElementById('ef-credito').value);
     const tarjetas = parseMoneyInput(document.getElementById('ef-tarjetas').value);
+    const reservas = parseMoneyInput(document.getElementById('ef-reservas').value);
     const activosFijos = getFixedAssetInputs();
     const ingresosCaja = parseMoneyInput(document.getElementById('ef-ingresos-caja').value);
     const egresosCaja = parseMoneyInput(document.getElementById('ef-egresos-caja').value);
@@ -2440,10 +2515,12 @@ function saveEstadoFinanciero(e) {
         saldoCaja: ingresosCaja - egresosCaja,
         caja,
         bancos,
+        inversionesCortoPlazo,
         cuentasPorCobrar,
         inventario,
         credito,
         tarjetas,
+        reservas,
         activosFijos,
         margenBruto: ventas ? utilidadBruta / ventas : 0,
         manual: true
@@ -2586,9 +2663,13 @@ function financialDetailFor(periodo) {
     if (!item) return {};
     const fixedAssets = Array.isArray(item.activosFijos) ? item.activosFijos : [];
     const totalActivoFijo = fixedAssets.reduce((s,x) => s + Number(x.amount || 0), 0);
-    const totalActivoCirculante = (item.caja || 0) + (item.bancos || 0) + (item.cuentasPorCobrar || 0) + (item.inventario || 0);
+    const inversionesCortoPlazo = Number(item.inversionesCortoPlazo || item.inversiones || 0);
+    const reservas = Number(item.reservas || 0);
+    const totalActivoCirculante = (item.caja || 0) + (item.bancos || 0) + inversionesCortoPlazo + (item.cuentasPorCobrar || 0) + (item.inventario || 0);
     const totalPasivoCirculante = (item.credito || 0) + (item.tarjetas || 0);
     const totalActivo = totalActivoCirculante + totalActivoFijo;
+    const capitalSocial = totalActivo - totalPasivoCirculante - reservas;
+    const totalCapitalContable = capitalSocial + reservas;
     return {
         'Estado de Resultado': [
             ['Concepto', 'Cant', 'Prom', 'Total'],
@@ -2614,6 +2695,7 @@ function financialDetailFor(periodo) {
             ['Activo Circulante', '', 'Pasivo Circulante', ''],
             ['Caja (Efectivo)', item.caja || 0, 'Credito', item.credito || 0],
             ['Bancos', item.bancos || 0, 'Tarjetas de Crédito', item.tarjetas || 0],
+            ['Inversiones a corto plazo', inversionesCortoPlazo],
             ['Cuentas por cobrar', item.cuentasPorCobrar || 0],
             ['Inventario', item.inventario || 0],
             ['Total Activo Circulante', totalActivoCirculante, 'Total Pasivo Circulante', totalPasivoCirculante],
@@ -2621,9 +2703,10 @@ function financialDetailFor(periodo) {
             ...fixedAssets.map(x => [x.name || 'Activo fijo', Number(x.amount || 0)]),
             ['Total Activo Fijo', totalActivoFijo, 'Total Pasivo a Largo Plazo', 0],
             ['Activo Diferido', '', 'CAPITAL CONTABLE', ''],
-            ['Total Activo Diferido', 0, 'Capital Social', totalActivo - totalPasivoCirculante],
-            ['SUMA DEL ACTIVO', totalActivo, 'Total Capital Contable', totalActivo - totalPasivoCirculante],
-            ['', '', 'PASIVO + CAPITAL CONTABLE', totalActivo]
+            ['Total Activo Diferido', 0, 'Capital Social', capitalSocial],
+            ['', '', 'Reservas', reservas],
+            ['SUMA DEL ACTIVO', totalActivo, 'Total Capital Contable', totalCapitalContable],
+            ['', '', 'PASIVO + CAPITAL CONTABLE', totalPasivoCirculante + totalCapitalContable]
         ]
     };
 }
