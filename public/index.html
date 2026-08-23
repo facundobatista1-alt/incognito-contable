@@ -4209,7 +4209,7 @@ async function requestMpMovimientosData(desde, hasta, account) {
     var res = await fetch(apiUrl, {
         method: 'POST',
         headers: headers,
-            body: JSON.stringify({ from: desde, to: hasta, includeSales: false, account: account || 'MP FB' })
+            body: JSON.stringify({ from: desde, to: hasta, includeSales: false, account: account || 'MP FB', forceFresh: true })
     });
     var text = await res.text();
     var data = text ? JSON.parse(text) : {};
