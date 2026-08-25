@@ -2113,12 +2113,13 @@ function renderDashboard() {
         kpiHtml += '<div class="kpi-card"><div class="kpi-label">Ticket promedio</div><div class="kpi-value purple">' + fmt(ticketAvg) + '</div><div class="kpi-sub">' + ventas.length + ' ventas</div></div>';
         kpiHtml += '<div class="kpi-card"><div class="kpi-label">Flux pendientes</div><div class="kpi-value orange">' + fluxPend.length + '</div><div class="kpi-sub">' + (fluxMonto > 0 ? fmt(fluxMonto) + ' (aproximado)' : 'sin promedio disponible') + '</div></div>';
         kpiHtml += getMpKpiHtml(balCutoff, 'MP FB', 'MP por cobrar FB', '#2563eb', '#3b82f6', true);
-        kpiHtml += getMpKpiHtml(balCutoff, 'MP MV', 'MP por cobrar MV', '#7c3aed', '#8b5cf6', false);
+        kpiHtml += getMpKpiHtml(balCutoff, 'MP MV', 'MP por cobrar MV', '#7c3aed', '#8b5cf6', true);
         if (bestMonth) {
             kpiHtml += '<div class="kpi-card"><div class="kpi-label">Mejor mes</div><div class="kpi-value gray">' + bestMonth[0] + '</div><div class="kpi-sub">' + fmt(bestMonth[1]) + '</div></div>';
         }
         document.getElementById('dash-kpis').innerHTML = kpiHtml;
-        refreshMpUnreleasedBalance(false, balCutoff);
+        refreshMpUnreleasedBalance(false, balCutoff, 'MP FB');
+        refreshMpUnreleasedBalance(false, balCutoff, 'MP MV');
     })();
 
         // Account balances - frozen at end of selected period
@@ -3888,19 +3889,23 @@ function getMpKpiHtml(cutoff, account, label, color, borderColor, useRemoteApi) 
     var mpP = transactions.filter(function(t){ return t.cuenta === account && isPendingAt(t, cutoff); });
     var mpM = mpP.reduce(function(s,t){ return s + t.ingreso; }, 0);
     var useApi = !!useRemoteApi && (!cutoff || cutoff >= todayLocal());
-    var subId = account === 'MP FB' ? ' id="mp-unreleased-kpi-sub"' : '';
+    var safeAccount = String(account || 'MP FB').replace(/\s+/g, '-');
+    var subId = ' id="mp-unreleased-kpi-sub-' + safeAccount + '"';
+    var value = mpP.length;
     var mpSub = '<span' + subId + '>' + (mpM > 0 ? fmt(mpM) + ' pendientes al cierre (aproximado)' : 'sin pendientes') + '</span>';
     if (useApi) {
         mpSub = '<span' + subId + '>Consultando MP...</span>';
-        if (_mpUnreleasedBalance && _mpUnreleasedBalance.ok) {
-            mpSub = '<span' + subId + '>' + fmt(_mpUnreleasedBalance.total) + ' por liberar MP (aproximado)</span>';
-        } else if (_mpUnreleasedBalance && _mpUnreleasedBalance.error) {
+        var balance = _mpUnreleasedBalances[account];
+        if (balance && balance.ok) {
+            value = balance.count;
+            mpSub = '<span' + subId + '>' + fmt(balance.total) + ' por liberar MP (aproximado)</span>';
+        } else if (balance && balance.error) {
             mpSub = '<span' + subId + '>' + (mpM > 0 ? fmt(mpM) + ' local (aproximado)' : 'sin monto local') + '</span>';
         }
     }
     return '<div class="kpi-card" style="border-color:' + borderColor + '">'
         + '<div class="kpi-label" style="color:' + color + '">' + label + '</div>'
-        + '<div class="kpi-value" style="color:' + color + '">' + mpP.length + '</div>'
+        + '<div id="mp-unreleased-kpi-value-' + safeAccount + '" class="kpi-value" style="color:' + color + '">' + value + '</div>'
         + '<div class="kpi-sub">' + mpSub + '</div>'
         + '</div>';
 }
@@ -3909,48 +3914,55 @@ function getMpKpiHtml(cutoff, account, label, color, borderColor, useRemoteApi) 
 // ======================================================
 // CARGA MP POR LOTE
 // ======================================================
-var _mpUnreleasedBalance = null;
-var _mpUnreleasedLoading = false;
+var _mpUnreleasedBalances = {};
+var _mpUnreleasedLoading = {};
 
-function updateMpUnreleasedKpiSub(cutoff) {
-    var el = document.getElementById('mp-unreleased-kpi-sub');
+function updateMpUnreleasedKpiSub(cutoff, account) {
+    account = isMpAccount(account) ? account : 'MP FB';
+    var safeAccount = String(account || 'MP FB').replace(/\s+/g, '-');
+    var el = document.getElementById('mp-unreleased-kpi-sub-' + safeAccount);
+    var valueEl = document.getElementById('mp-unreleased-kpi-value-' + safeAccount);
     if (!el) return;
-    var mpP = transactions.filter(function(t){ return t.cuenta === 'MP FB' && isPendingAt(t, cutoff); });
+    var mpP = transactions.filter(function(t){ return t.cuenta === account && isPendingAt(t, cutoff); });
     var mpM = mpP.reduce(function(s,t){ return s + t.ingreso; }, 0);
-    if (!mpP.length) {
+    var balance = _mpUnreleasedBalances[account];
+    if (valueEl) valueEl.textContent = balance && balance.ok ? String(balance.count || 0) : String(mpP.length);
+    if (!mpP.length && !(balance && balance.ok && balance.count > 0)) {
         el.textContent = 'sin pendientes';
         return;
     }
     var useApi = !cutoff || cutoff >= todayLocal();
     if (!useApi) {
         el.textContent = mpM > 0 ? fmt(mpM) + ' pendientes al cierre (aproximado)' : 'pendiente al cierre';
-    } else if (_mpUnreleasedBalance && _mpUnreleasedBalance.ok) {
-        el.textContent = fmt(_mpUnreleasedBalance.total) + ' por liberar MP (aproximado)';
-    } else if (_mpUnreleasedBalance && _mpUnreleasedBalance.error) {
+    } else if (balance && balance.ok) {
+        el.textContent = fmt(balance.total) + ' por liberar MP (aproximado)';
+    } else if (balance && balance.error) {
         el.textContent = mpM > 0 ? fmt(mpM) + ' local (aproximado)' : 'sin monto local';
     } else {
         el.textContent = 'Consultando MP...';
     }
 }
 
-async function refreshMpUnreleasedBalance(force, cutoff) {
-    var mpP = transactions.filter(function(t){ return t.cuenta === 'MP FB' && isPendingAt(t, cutoff); });
-    if (!mpP.length && !force) {
-        updateMpUnreleasedKpiSub(cutoff);
+async function refreshMpUnreleasedBalance(force, cutoff, account) {
+    account = isMpAccount(account) ? account : 'MP FB';
+    var mpP = transactions.filter(function(t){ return t.cuenta === account && isPendingAt(t, cutoff); });
+    if (cutoff && cutoff < todayLocal() && !mpP.length && !force) {
+        updateMpUnreleasedKpiSub(cutoff, account);
         return;
     }
     if (cutoff && cutoff < todayLocal()) {
-        updateMpUnreleasedKpiSub(cutoff);
+        updateMpUnreleasedKpiSub(cutoff, account);
         return;
     }
     var now = Date.now();
-    if (!force && _mpUnreleasedBalance && _mpUnreleasedBalance.ts && now - _mpUnreleasedBalance.ts < 5 * 60 * 1000) {
-        updateMpUnreleasedKpiSub(cutoff);
+    var balance = _mpUnreleasedBalances[account];
+    if (!force && balance && balance.ts && now - balance.ts < 5 * 60 * 1000) {
+        updateMpUnreleasedKpiSub(cutoff, account);
         return;
     }
-    if (_mpUnreleasedLoading) return;
-    _mpUnreleasedLoading = true;
-    updateMpUnreleasedKpiSub(cutoff);
+    if (_mpUnreleasedLoading[account]) return;
+    _mpUnreleasedLoading[account] = true;
+    updateMpUnreleasedKpiSub(cutoff, account);
     try {
         var apiUrl = getMpUnreleasedBalanceApiUrl();
         var headers = { 'Content-Type': 'application/json' };
@@ -3962,23 +3974,23 @@ async function refreshMpUnreleasedBalance(force, cutoff) {
         var res = await fetch(apiUrl, {
             method: 'POST',
             headers: headers,
-            body: JSON.stringify({ to: today })
+            body: JSON.stringify({ to: today, account: account })
         });
         var text = await res.text();
         var data = text ? JSON.parse(text) : {};
         if (!res.ok || data.success === false) throw new Error(data.error || data.message || ('Error HTTP ' + res.status));
-        _mpUnreleasedBalance = {
+        _mpUnreleasedBalances[account] = {
             ok: true,
             total: normalizeMpAmount(data.total),
             count: parseInt(data.count || 0, 10),
             ts: Date.now()
         };
     } catch(e) {
-        console.warn('MP unreleased balance error:', e);
-        _mpUnreleasedBalance = { ok: false, error: true, ts: Date.now() };
+        console.warn('MP unreleased balance error:', account, e);
+        _mpUnreleasedBalances[account] = { ok: false, error: true, ts: Date.now() };
     } finally {
-        _mpUnreleasedLoading = false;
-        updateMpUnreleasedKpiSub(cutoff);
+        _mpUnreleasedLoading[account] = false;
+        updateMpUnreleasedKpiSub(cutoff, account);
     }
 }
 
