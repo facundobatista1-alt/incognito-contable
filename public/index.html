@@ -3895,7 +3895,8 @@ function getMpKpiHtml(cutoff, account, label, color, borderColor, useRemoteApi) 
     var mpSub = '<span' + subId + '>' + (mpM > 0 ? fmt(mpM) + ' pendientes al cierre (aproximado)' : 'sin pendientes') + '</span>';
     if (useApi) {
         mpSub = '<span' + subId + '>Consultando MP...</span>';
-        var balance = _mpUnreleasedBalances[account];
+        var balanceStore = _mpUnreleasedBalances || {};
+        var balance = balanceStore[account];
         if (balance && balance.ok) {
             value = balance.count;
             mpSub = '<span' + subId + '>' + fmt(balance.total) + ' por liberar MP (aproximado)</span>';
