@@ -4319,7 +4319,6 @@ async function checkMpMovimientosPendingReport() {
 function normalizeMpMovType(type) {
     var t = String(type || '').trim().toUpperCase();
     if (t === 'PAYOUT') return 'PAYOUTS';
-    if (t === 'SETTLEMENT') return 'ASSET_MANAGEMENT';
     return t;
 }
 
