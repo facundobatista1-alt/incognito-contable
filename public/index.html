@@ -4231,7 +4231,14 @@ async function requestMpMovimientosData(desde, hasta, account, forceFresh) {
 }
 
 function prepareMpMovimientosRows(data, account) {
-    var rows = normalizeMpMovementRows(data, account);
+    var rows = [];
+    var seenRows = {};
+    normalizeMpMovementRows(data, account).forEach(function(m) {
+        var key = mpMovKey(m);
+        if (key && seenRows[key]) return;
+        if (key) seenRows[key] = true;
+        rows.push(m);
+    });
     rows.forEach(function(m){ m.existe = mpMovimientoExiste(m); m.descripcionFinal = descripcionMpMovimiento(m); });
     return rows;
 }
@@ -4309,8 +4316,33 @@ async function checkMpMovimientosPendingReport() {
     }
 }
 
+function normalizeMpMovType(type) {
+    var t = String(type || '').trim().toUpperCase();
+    if (t === 'PAYOUT') return 'PAYOUTS';
+    if (t === 'SETTLEMENT') return 'ASSET_MANAGEMENT';
+    return t;
+}
+
+function mpMovKey(m) {
+    var sourceId = String(m && m.sourceId || '').trim();
+    if (!sourceId) return '';
+    return normalizeMpMovType(m.transactionType) + '|' + sourceId;
+}
+
 function mpMovMarker(m) {
-    return 'MPMOV ' + String(m.transactionType || '').toUpperCase() + ' | ' + String(m.sourceId || '');
+    return 'MPMOV ' + normalizeMpMovType(m.transactionType) + ' | ' + String(m.sourceId || '');
+}
+
+function textHasMpMovMarker(text, m) {
+    var wanted = mpMovKey(m);
+    if (!wanted) return false;
+    var re = /MPMOV\s+([^|]+)\|\s*([^\]|]+)/ig;
+    var match;
+    while ((match = re.exec(String(text || ''))) !== null) {
+        var found = normalizeMpMovType(match[1]) + '|' + String(match[2] || '').trim();
+        if (found === wanted) return true;
+    }
+    return false;
 }
 
 function mpMovimientoExiste(m) {
@@ -4326,12 +4358,12 @@ function mpMovimientoExiste(m) {
     }
 
     return transactions.some(function(t){
-            if (String(t.descripcion || '').indexOf(marker) >= 0) return true;
+            if (String(t.descripcion || '').indexOf(marker) >= 0 || textHasMpMovMarker(t.descripcion || '', m)) return true;
             if ((t.cuenta || '') !== cuenta || !mismaFechaYCategoria(t.descripcion || '', t.fecha)) return false;
             return sameMpAmount(t.egreso, egreso) && sameMpAmount(t.ingreso, ingreso);
         })
         || transfers.some(function(t){
-            if (String(t.descripcion || '').indexOf(marker) >= 0) return true;
+            if (String(t.descripcion || '').indexOf(marker) >= 0 || textHasMpMovMarker(t.descripcion || '', m)) return true;
             if ((t.origen || '') !== cuenta || !mismaFechaYCategoria(t.descripcion || '', t.fecha)) return false;
             return sameMpAmount(t.monto, montoTransferencia);
         });
