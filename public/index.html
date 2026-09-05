@@ -3898,7 +3898,6 @@ function getMpKpiHtml(cutoff, account, label, color, borderColor, useRemoteApi) 
         var balanceStore = _mpUnreleasedBalances || {};
         var balance = balanceStore[account];
         if (balance && balance.ok) {
-            value = balance.count;
             mpSub = '<span' + subId + '>' + fmt(balance.total) + ' por liberar MP (aproximado)</span>';
         } else if (balance && balance.error) {
             mpSub = '<span' + subId + '>' + (mpM > 0 ? fmt(mpM) + ' local (aproximado)' : 'sin monto local') + '</span>';
@@ -3927,7 +3926,7 @@ function updateMpUnreleasedKpiSub(cutoff, account) {
     var mpP = transactions.filter(function(t){ return t.cuenta === account && isPendingAt(t, cutoff); });
     var mpM = mpP.reduce(function(s,t){ return s + t.ingreso; }, 0);
     var balance = _mpUnreleasedBalances[account];
-    if (valueEl) valueEl.textContent = balance && balance.ok ? String(balance.count || 0) : String(mpP.length);
+    if (valueEl) valueEl.textContent = String(mpP.length);
     if (!mpP.length) {
         el.textContent = 'sin pendientes';
         if (valueEl) valueEl.textContent = '0';
