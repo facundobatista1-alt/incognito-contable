@@ -3888,7 +3888,7 @@ function getFluxHistoricalAverage() {
 function getMpKpiHtml(cutoff, account, label, color, borderColor, useRemoteApi) {
     var mpP = transactions.filter(function(t){ return t.cuenta === account && isPendingAt(t, cutoff); });
     var mpM = mpP.reduce(function(s,t){ return s + t.ingreso; }, 0);
-    var useApi = !!useRemoteApi && (!cutoff || cutoff >= todayLocal());
+    var useApi = !!useRemoteApi && mpP.length > 0 && (!cutoff || cutoff >= todayLocal());
     var safeAccount = String(account || 'MP FB').replace(/\s+/g, '-');
     var subId = ' id="mp-unreleased-kpi-sub-' + safeAccount + '"';
     var value = mpP.length;
@@ -3928,8 +3928,9 @@ function updateMpUnreleasedKpiSub(cutoff, account) {
     var mpM = mpP.reduce(function(s,t){ return s + t.ingreso; }, 0);
     var balance = _mpUnreleasedBalances[account];
     if (valueEl) valueEl.textContent = balance && balance.ok ? String(balance.count || 0) : String(mpP.length);
-    if (!mpP.length && !(balance && balance.ok && balance.count > 0)) {
+    if (!mpP.length) {
         el.textContent = 'sin pendientes';
+        if (valueEl) valueEl.textContent = '0';
         return;
     }
     var useApi = !cutoff || cutoff >= todayLocal();
@@ -3947,6 +3948,10 @@ function updateMpUnreleasedKpiSub(cutoff, account) {
 async function refreshMpUnreleasedBalance(force, cutoff, account) {
     account = isMpAccount(account) ? account : 'MP FB';
     var mpP = transactions.filter(function(t){ return t.cuenta === account && isPendingAt(t, cutoff); });
+    if (!mpP.length && !force) {
+        updateMpUnreleasedKpiSub(cutoff, account);
+        return;
+    }
     if (cutoff && cutoff < todayLocal() && !mpP.length && !force) {
         updateMpUnreleasedKpiSub(cutoff, account);
         return;
